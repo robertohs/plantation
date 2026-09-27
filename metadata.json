@@ -1,0 +1,6 @@
+{
+  "name": "Plantation",
+  "description": "Plant logger & botanical dossier application with Catppuccin terminal aesthetic, specimen records, and PDF exports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

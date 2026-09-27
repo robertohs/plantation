@@ -8,6 +8,7 @@ Fast, modular, and optimized for speed.
 import csv
 import io
 import os
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile, File
 from fastapi.responses import HTMLResponse, Response, FileResponse
@@ -27,28 +28,34 @@ router = APIRouter()
 admin_state = {"open": False}
 
 STATUS_BADGE_CLASSES = {
-    "Extremely Ill": "status-Extremely-Ill",
-    "Diseaced": "status-Diseaced",
-    "Disease": "status-Diseaced",
-    "Ok": "status-Ok",
-    "Triving": "status-Triving"
+    "OK": "status-OK",
+    "notOK": "status-notOK",
+    "Ok": "status-OK",
+    "Triving": "status-OK",
+    "Disease": "status-notOK",
+    "Diseaced": "status-notOK",
+    "Extremely Ill": "status-notOK"
 }
 
 STATUS_SPANISH = {
-    "Extremely Ill": "Muy Enfermo",
-    "Diseaced": "Enfermo",
-    "Disease": "Enfermo",
-    "Ok": "Saludable",
-    "Triving": "Próspero"
+    "OK": "OK",
+    "notOK": "notOK",
+    "Ok": "OK",
+    "Triving": "OK",
+    "Disease": "notOK",
+    "Diseaced": "notOK",
+    "Extremely Ill": "notOK"
 }
 
 
 def render_card_html(p: dict) -> str:
-    """Renders a single plant card with bounded headers and thumbnail preview."""
-    status = p.get("status", "Ok")
-    status_cls = STATUS_BADGE_CLASSES.get(status, "status-Ok")
+    """Renders a single plant card with bounded headers, AKA badge, and thumbnail preview."""
+    status = p.get("status", "OK")
+    status_cls = STATUS_BADGE_CLASSES.get(status, "status-OK")
     status_es = STATUS_SPANISH.get(status, status)
     photos = p.get("photos", [])
+    aka = p.get("aka", "").strip()
+    aka_html = f'<span class="plant-aka" title=\'Alias: "{aka}"\'>"{aka}"</span>' if aka else ""
     age_short, age_detailed = db.calculate_plant_age(p.get("sowing_cutting_date"), p.get("graft", ""))
 
     if photos:
@@ -69,8 +76,9 @@ def render_card_html(p: dict) -> str:
     return f"""
     <div class="plant-card" id="plant-card-{p.get('name')}">
         <div class="plant-card-header">
-            <div class="plant-key-box">
+            <div class="plant-key-box" style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;">
                 <span class="plant-key" title="{p.get('name')}">[ID: {p.get('name')}]</span>
+                {aka_html}
             </div>
             <div class="plant-status-box">
                 <span class="status-badge {status_cls}">● {status_es}</span>
@@ -146,21 +154,21 @@ def render_plants_grid(plants: List[dict]) -> str:
 
 
 def render_stats_bar() -> str:
-    """Renders catalog stats counters."""
+    """Renders catalog stats counters with 2 health states."""
     stats = db.get_stats()
     sc = stats.get("status_counts", {})
+    ok_count = sc.get('OK', 0)
+    not_ok_count = sc.get('notOK', 0)
     return f"""
     <div class="stats-summary" id="stats-bar">
         <div>
             TOTAL EJEMPLARES: <span class="stats-count-tag">{stats.get('total', 0)}</span> |
             FOTOS EN DISCO: <span style="color: var(--blue-sky); font-weight: bold;">{stats.get('total_photos', 0)}</span> |
-            UBICACIONES: <span style="color: var(--green-sage); font-weight: bold;">{stats.get('locations_count', 0)}</span>
+            UBICACIONES: <span style="color: var(--text-main); font-weight: bold;">{stats.get('locations_count', 0)}</span>
         </div>
-        <div style="display: flex; gap: 12px; font-size: 11px;">
-            <span><span style="color: var(--green-sage);">●</span> Próspero: {sc.get('Triving', 0)}</span>
-            <span><span style="color: var(--blue-sky);">●</span> Ok: {sc.get('Ok', 0)}</span>
-            <span><span style="color: var(--peach-orange);">●</span> Enfermo: {sc.get('Diseaced', 0) + sc.get('Disease', 0)}</span>
-            <span><span style="color: var(--red-crimson);">●</span> Muy Enfermo: {sc.get('Extremely Ill', 0)}</span>
+        <div style="display: flex; gap: 14px; font-size: 11.5px; font-weight: 600;">
+            <span style="color: var(--green-sage);">● OK: {ok_count}</span>
+            <span style="color: var(--peach-orange);">● notOK: {not_ok_count}</span>
         </div>
     </div>
     """
@@ -288,57 +296,62 @@ def index_view(request: Request):
                 <div class="search-line">
                     <span class="input-prompt">query&gt;</span>
                     <input type="text"
-                           name="search"
                            id="search-input"
                            class="search-input"
-                           placeholder="Búsqueda alfanumérica por Clave (ej. A2, 900), Especie, Ubicación o Linaje..."
-                           hx-get="/plants"
-                           hx-trigger="keyup changed delay:200ms, search"
-                           hx-target="#plant-container"
-                           hx-swap="innerHTML"
-                           hx-include="#status-filter-val"
-                           hx-indicator="#search-spinner" />
+                           placeholder="Búsqueda por Clave (ej. A2, 900), Alias (ej. ocaso, darkRed), Especie, Ubicación..."
+                           oninput="onSearchFilterInput(this.value)"
+                           autocomplete="off" />
                     <span id="search-spinner" class="htmx-indicator" style="color: var(--red-crimson); font-size: 11px;">[BUSCANDO...]</span>
                 </div>
 
-                <div class="filter-bar">
-                    <span class="filter-label">Filtro:</span>
-                    <input type="hidden" id="status-filter-val" name="status" value="ALL" />
-                    <button class="status-pill active"
-                            hx-get="/plants?status=ALL"
-                            hx-target="#plant-container"
-                            hx-include="#search-input"
-                            onclick="document.querySelectorAll('.status-pill').forEach(e => e.classList.remove('active')); this.classList.add('active'); document.getElementById('status-filter-val').value='ALL';">
-                        TODOS
-                    </button>
-                    <button class="status-pill status-pill-triving"
-                            hx-get="/plants?status=Triving"
-                            hx-target="#plant-container"
-                            hx-include="#search-input"
-                            onclick="document.querySelectorAll('.status-pill').forEach(e => e.classList.remove('active')); this.classList.add('active'); document.getElementById('status-filter-val').value='Triving';">
-                        ● PRÓSPERO (TRIVING)
-                    </button>
-                    <button class="status-pill status-pill-ok"
-                            hx-get="/plants?status=Ok"
-                            hx-target="#plant-container"
-                            hx-include="#search-input"
-                            onclick="document.querySelectorAll('.status-pill').forEach(e => e.classList.remove('active')); this.classList.add('active'); document.getElementById('status-filter-val').value='Ok';">
-                        ● OK (SALUDABLE)
-                    </button>
-                    <button class="status-pill status-pill-diseaced"
-                            hx-get="/plants?status=Disease"
-                            hx-target="#plant-container"
-                            hx-include="#search-input"
-                            onclick="document.querySelectorAll('.status-pill').forEach(e => e.classList.remove('active')); this.classList.add('active'); document.getElementById('status-filter-val').value='Disease';">
-                        ● ENFERMO (DISEASE)
-                    </button>
-                    <button class="status-pill status-pill-ill"
-                            hx-get="/plants?status=Extremely Ill"
-                            hx-target="#plant-container"
-                            hx-include="#search-input"
-                            onclick="document.querySelectorAll('.status-pill').forEach(e => e.classList.remove('active')); this.classList.add('active'); document.getElementById('status-filter-val').value='Extremely Ill';">
-                        ● MUY ENFERMO (EXTREMELY ILL)
-                    </button>
+                <input type="hidden" id="current-status-filter" value="ALL" />
+                <input type="hidden" id="current-age-filter" value="ALL" />
+
+                <div class="filter-bar" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span class="filter-label">ESTADO:</span>
+                        <button type="button"
+                                class="status-pill status-filter-btn active"
+                                onclick="applyPlantFilter('status', 'ALL', this)">
+                            TODOS
+                        </button>
+                        <button type="button"
+                                class="status-pill status-pill-ok status-filter-btn"
+                                onclick="applyPlantFilter('status', 'OK', this)">
+                            ● OK
+                        </button>
+                        <button type="button"
+                                class="status-pill status-pill-notok status-filter-btn"
+                                onclick="applyPlantFilter('status', 'notOK', this)">
+                            ● notOK
+                        </button>
+                    </div>
+
+                    <div style="display: inline-block; width: 1px; height: 18px; background: var(--border-dim); margin: 0 4px;"></div>
+
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span class="filter-label">EDAD:</span>
+                        <button type="button"
+                                class="status-pill age-filter-btn active"
+                                onclick="applyPlantFilter('age', 'ALL', this)">
+                            TODAS
+                        </button>
+                        <button type="button"
+                                class="status-pill status-pill-age age-filter-btn"
+                                onclick="applyPlantFilter('age', 'less_1', this)">
+                            &lt; 1 AÑO
+                        </button>
+                        <button type="button"
+                                class="status-pill status-pill-age age-filter-btn"
+                                onclick="applyPlantFilter('age', '1_to_2', this)">
+                            1 - 2 AÑOS
+                        </button>
+                        <button type="button"
+                                class="status-pill status-pill-age age-filter-btn"
+                                onclick="applyPlantFilter('age', '3_plus', this)">
+                            3+ AÑOS
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -435,13 +448,57 @@ def index_view(request: Request):
                 applyTheme(saved);
             }});
 
-            (function() {{
-                var saved = 'catpuchin';
-                try {{
-                    saved = localStorage.getItem('plantation_theme') || 'catpuchin';
-                }} catch(e) {{}}
-                applyTheme(saved);
-            }})();
+            var _searchDebounceTimer = null;
+
+            function executePlantFilter() {{
+                var searchInp = document.getElementById('search-input');
+                var search = searchInp ? searchInp.value.trim() : '';
+                var statusVal = document.getElementById('current-status-filter') ? document.getElementById('current-status-filter').value : 'ALL';
+                var ageVal = document.getElementById('current-age-filter') ? document.getElementById('current-age-filter').value : 'ALL';
+
+                var params = new URLSearchParams();
+                if (search) params.set('search', search);
+                if (statusVal && statusVal !== 'ALL') params.set('status', statusVal);
+                if (ageVal && ageVal !== 'ALL') params.set('age', ageVal);
+
+                var qs = params.toString();
+                var endpoint = '/plants' + (qs ? '?' + qs : '');
+
+                var spinner = document.getElementById('search-spinner');
+                if (spinner) spinner.style.display = 'inline-block';
+
+                htmx.ajax('GET', endpoint, {{
+                    target: '#plant-container',
+                    swap: 'innerHTML'
+                }}).then(function() {{
+                    if (spinner) spinner.style.display = 'none';
+                }}).catch(function() {{
+                    if (spinner) spinner.style.display = 'none';
+                }});
+            }}
+
+            function applyPlantFilter(type, value, btn) {{
+                if (type === 'status') {{
+                    var el = document.getElementById('current-status-filter');
+                    if (el) el.value = value;
+                    document.querySelectorAll('.status-filter-btn').forEach(function(b) {{
+                        b.classList.remove('active');
+                    }});
+                }} else if (type === 'age') {{
+                    var el = document.getElementById('current-age-filter');
+                    if (el) el.value = value;
+                    document.querySelectorAll('.age-filter-btn').forEach(function(b) {{
+                        b.classList.remove('active');
+                    }});
+                }}
+                if (btn) btn.classList.add('active');
+                executePlantFilter();
+            }}
+
+            function onSearchFilterInput(val) {{
+                clearTimeout(_searchDebounceTimer);
+                _searchDebounceTimer = setTimeout(executePlantFilter, 160);
+            }}
         </script>
     </body>
     </html>
@@ -452,21 +509,11 @@ def index_view(request: Request):
 @router.get("/plants", response_class=HTMLResponse)
 def list_plants_partial(
     search: Optional[str] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    age: Optional[str] = None
 ):
-    """HTMX endpoint returning reactive filtered plants grid."""
-    # Support both "Disease" and "Diseaced" if passed
-    filter_val = status
-    if status in ("Disease", "Diseaced"):
-        filter_val = "Disease"
-    plants = db.get_plants(search_query=search, status_filter=filter_val)
-    if status in ("Disease", "Diseaced"):
-        # Combine any recorded as Diseaced or Disease
-        alt_plants = db.get_plants(search_query=search, status_filter="Diseaced")
-        seen_names = {p["name"] for p in plants}
-        for ap in alt_plants:
-            if ap["name"] not in seen_names:
-                plants.append(ap)
+    """HTMX endpoint returning reactive filtered plants grid with search, 2-state health, and age."""
+    plants = db.get_plants(search_query=search, status_filter=status, age_filter=age)
     return HTMLResponse(render_plants_grid(plants))
 
 
@@ -475,7 +522,7 @@ def list_plants_partial(
 # ==============================================================================
 
 def render_photo_item_html(plant_name: str, ph: str) -> str:
-    """Renders a photo card in the technical dossier with instant, working deletion."""
+    """Renders a photo card in the technical dossier with instant deletion and confirmation pop-up."""
     return f"""
         <div class="modal-photo-item">
             <button type="button"
@@ -483,6 +530,7 @@ def render_photo_item_html(plant_name: str, ph: str) -> str:
                     hx-delete="/plants/{plant_name}/photos/{ph}"
                     hx-target="#plant-photos-wrapper"
                     hx-swap="innerHTML"
+                    hx-confirm="¿Está seguro de eliminar esta fotografía de forma permanente?"
                     title="Eliminar foto del ejemplar">✕</button>
             <img class="modal-photo-thumb" src="/images/{ph}" alt="{ph}" />
             <div style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;" title="{ph}">
@@ -493,6 +541,7 @@ def render_photo_item_html(plant_name: str, ph: str) -> str:
                     hx-delete="/plants/{plant_name}/photos/{ph}"
                     hx-target="#plant-photos-wrapper"
                     hx-swap="innerHTML"
+                    hx-confirm="¿Está seguro de eliminar esta fotografía de forma permanente?"
                     title="Eliminar foto permanentemente">
                 🗑 [ELIMINAR]
             </button>
@@ -550,8 +599,10 @@ def render_view_plant_modal_content(plant: dict, alert_msg: str = "") -> str:
                     <div style="font-size: 16px; font-style: italic; color: var(--blue-sky); margin: 3px 0 6px 0; word-break: break-word;">
                         {plant.get('species')}
                     </div>
-                    <div style="font-size: 12px; color: var(--text-sub);">
-                        UBICACIÓN FÍSICA: <span style="color: var(--text-main); font-weight: 600;">{plant.get('location') or 'Sin registrar'}</span>
+                    <div style="font-size: 12px; color: var(--text-sub); display: flex; gap: 14px; flex-wrap: wrap;">
+                        <span>CLAVE: <strong style="color: var(--text-main); font-weight: 700;">[{plant.get('name')}]</strong></span>
+                        {f'<span>ALIAS / AKA: <strong style="color: var(--peach-orange); font-weight: 700;">"{plant.get("aka")}"</strong></span>' if plant.get("aka") else ''}
+                        <span>UBICACIÓN FÍSICA: <span style="color: var(--text-main); font-weight: 600;">{plant.get('location') or 'Sin registrar'}</span></span>
                     </div>
                 </div>
 
@@ -632,11 +683,18 @@ def render_view_plant_modal_content(plant: dict, alert_msg: str = "") -> str:
 
             <!-- Sticky Footer with Prominent Actions -->
             <div class="modal-footer-sticky">
-                <div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <a class="btn btn-red"
                        href="/pdf/plant/{plant.get('name')}"
-                       target="_blank">
-                        🗎 [DESCARGAR EXPEDIENTE PDF]
+                       target="_blank"
+                       title="Descargar dossier técnico en PDF">
+                        🗎 [DESCARGAR PDF]
+                    </a>
+                    <a class="btn btn-primary"
+                       href="/plants/{plant.get('name')}/dossier"
+                       target="_blank"
+                       title="Abrir vista de impresión y dossier técnico">
+                        🖨 [VER / IMPRIMIR DOSSIER]
                     </a>
                 </div>
                 <div style="display: flex; gap: 8px;">
@@ -672,9 +730,10 @@ def view_plant_modal(name: str):
 
 @router.get("/plants/modal/new", response_class=HTMLResponse)
 def new_plant_modal():
-    """Renders the New Plant registration modal with friendly drag & drop photo uploader."""
+    """Renders the New Plant registration modal with friendly drag & drop photo uploader and default dates."""
     existing_keys = db.get_all_keys()
     keys_datalist = "".join([f'<option value="{k}">' for k in existing_keys])
+    today_str = datetime.now().strftime("%Y-%m-%d")
 
     return HTMLResponse(f"""
     <div class="modal-overlay" id="new-plant-modal">
@@ -683,22 +742,19 @@ def new_plant_modal():
                   hx-post="/plants"
                   hx-target="#modal-container"
                   hx-swap="innerHTML"
+                  enctype="multipart/form-data"
                   hx-encoding="multipart/form-data"
                   class="modal-form-wrapper">
 
-                <!-- Sticky Header with Quick Save & Close -->
+                <!-- Header without top save button -->
                 <div class="modal-header">
                     <span class="modal-title">+ [REGISTRAR NUEVO EJEMPLAR BOTÁNICO]</span>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="submit" class="btn btn-sm btn-green" style="font-weight: 700; padding: 6px 14px;">
-                            💾 [GUARDAR]
-                        </button>
-                        <button type="button"
-                                class="modal-close-btn"
-                                hx-get="/modal/close"
-                                hx-target="#modal-container"
-                                hx-swap="innerHTML">✕</button>
-                    </div>
+                    <button type="button"
+                            class="modal-close-btn"
+                            hx-get="/modal/close"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML"
+                            title="Cerrar ventana">✕</button>
                 </div>
 
                 <div class="modal-body">
@@ -723,12 +779,20 @@ def new_plant_modal():
                         </div>
 
                         <div class="form-group">
+                            <label class="form-label" for="inp-aka">ALIAS / NOMBRE ESPECIAL (AKA)</label>
+                            <input type="text"
+                                   id="inp-aka"
+                                   name="aka"
+                                   placeholder="Ej. ocaso, darkRed, golden..."
+                                   class="form-input" />
+                            <span style="font-size: 10px; color: var(--text-dim);">Nombre especial o comercial (ej. para injertos o clones).</span>
+                        </div>
+
+                        <div class="form-group">
                             <label class="form-label" for="inp-status">ESTADO SANITARIO *</label>
                             <select id="inp-status" name="status" class="form-select" required>
-                                <option value="Triving" selected>● Próspero (Triving)</option>
-                                <option value="Ok">● Saludable (Ok)</option>
-                                <option value="Disease">● Enfermo (Disease)</option>
-                                <option value="Extremely Ill">● Muy Enfermo (Extremely Ill)</option>
+                                <option value="OK" selected>● OK (Saludable / Verde)</option>
+                                <option value="notOK">● notOK (Atención / Naranja)</option>
                             </select>
                         </div>
 
@@ -759,6 +823,7 @@ def new_plant_modal():
                             <input type="date"
                                    id="inp-reg-date"
                                    name="registration_date"
+                                   value="{today_str}"
                                    class="form-input" />
                         </div>
 
@@ -776,10 +841,11 @@ def new_plant_modal():
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="inp-sow-date">FECHA SIEMBRA / ESQUEJE</label>
+                            <label class="form-label" for="inp-sow-date">FECHA SIEMBRA / ESQUEJE / INJERTO</label>
                             <input type="date"
                                    id="inp-sow-date"
                                    name="sowing_cutting_date"
+                                   value="{today_str}"
                                    class="form-input" />
                         </div>
 
@@ -788,7 +854,6 @@ def new_plant_modal():
                             <input type="text"
                                    id="inp-graft"
                                    name="graft"
-                                   list="existing-keys-list"
                                    placeholder="Ej. Sin injerto, o Myrtillocactus"
                                    class="form-input" />
                         </div>
@@ -837,18 +902,19 @@ def new_plant_modal():
                                  id="new-plant-dropzone"
                                  ondragover="event.preventDefault(); this.classList.add('drag-active');"
                                  ondragleave="this.classList.remove('drag-active');"
-                                 ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files.length) {{ var fi = document.getElementById('new-plant-photos-input'); fi.files = event.dataTransfer.files; var ps = document.getElementById('new-photo-preview-strip'); ps.innerHTML = '<span class=\"preview-chip\"><span class=\"preview-chip-icon\">✓</span> ' + event.dataTransfer.files.length + ' foto(s) lista(s) para subir</span>'; }}"
-                                 onclick="document.getElementById('new-plant-photos-input').click();">
+                                 ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files.length) {{ var fi = document.getElementById('new-plant-photos-input'); fi.files = event.dataTransfer.files; var ps = document.getElementById('new-photo-preview-strip'); ps.innerHTML = '<span class=\\'preview-chip\\'><span class=\\'preview-chip-icon\\'>✓</span> ' + event.dataTransfer.files.length + ' foto(s) seleccionada(s) lista(s) para subir</span>'; }}"
+                                 onclick="if (event.target.id !== 'new-plant-photos-input') document.getElementById('new-plant-photos-input').click();">
                                 <input type="file"
                                        id="new-plant-photos-input"
                                        name="photos"
                                        multiple
                                        accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/tiff"
                                        style="display:none;"
-                                       onchange="var ps = document.getElementById('new-photo-preview-strip'); if (this.files.length) {{ ps.innerHTML = '<span class=\"preview-chip\"><span class=\"preview-chip-icon\">✓</span> ' + this.files.length + ' foto(s) seleccionada(s)</span>'; }} else {{ ps.innerHTML = ''; }}" />
+                                       onclick="event.stopPropagation();"
+                                       onchange="var ps = document.getElementById('new-photo-preview-strip'); if (this.files.length) {{ ps.innerHTML = '<span class=\\'preview-chip\\'><span class=\\'preview-chip-icon\\'>✓</span> ' + this.files.length + ' foto(s) seleccionada(s) lista(s) para subir</span>'; }} else {{ ps.innerHTML = ''; }}" />
                                 <div class="drop-icon">📷</div>
                                 <div class="drop-title">Arrastra fotos aquí o <span class="drop-link">selecciona archivos</span></div>
-                                <div class="drop-subtitle">Formatos: JPG, PNG, WEBP, AVIF, HEIC (máx 10 MB por foto). Soporta selección múltiple.</div>
+                                <div class="drop-subtitle">Formatos: JPG, PNG, WEBP, AVIF, HEIC. Soporta selección múltiple simultánea.</div>
                             </div>
                             <div id="new-photo-preview-strip" class="preview-strip"></div>
                         </div>
@@ -880,6 +946,7 @@ def new_plant_modal():
 async def create_plant_submit(
     name: str = Form(...),
     species: str = Form(...),
+    aka: str = Form(""),
     location: str = Form(""),
     registration_date: str = Form(""),
     padres: str = Form(""),
@@ -888,14 +955,15 @@ async def create_plant_submit(
     last_pruned: str = Form(""),
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
-    status: str = Form("Ok"),
+    status: str = Form("OK"),
     comentarios: str = Form(""),
     photos: List[UploadFile] = File([])
 ):
-    """Processes creation of a new plant record including friendly multi-photo handling."""
+    """Processes creation of a new plant record including friendly multi-photo handling and aka."""
     data = {
         "name": name,
         "species": species,
+        "aka": aka,
         "location": location,
         "registration_date": registration_date,
         "padres": padres,
@@ -930,13 +998,14 @@ async def create_plant_submit(
 
     # Save uploaded photos if any
     clean_key_name = msg_or_key
-    for p_file in photos:
-        if p_file.filename:
-            content = await p_file.read()
-            if len(content) > 0:
-                p_success, p_filename, _ = validate_and_save_photo(clean_key_name, content, p_file.filename)
-                if p_success and p_filename:
-                    db.add_photo_to_plant(clean_key_name, p_filename)
+    if photos:
+        for p_file in photos:
+            if p_file and getattr(p_file, "filename", None):
+                content = await p_file.read()
+                if len(content) > 0:
+                    p_success, p_filename, _ = validate_and_save_photo(clean_key_name, content, p_file.filename)
+                    if p_success and p_filename:
+                        db.add_photo_to_plant(clean_key_name, p_filename)
 
     # Immediately close modal and update plants grid & stats via OOB swaps
     plants = db.get_plants()
@@ -985,7 +1054,7 @@ def edit_plant_modal(name: str):
                   hx-swap="innerHTML"
                   class="modal-form-wrapper">
 
-                <!-- Header Pinned at Top with Quick Save -->
+                <!-- Header Pinned at Top without save button -->
                 <div class="modal-header">
                     <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                         <span class="modal-title" style="color: var(--red-crimson);">[EDITAR FICHA TÉCNICA: {plant.get('name')}]</span>
@@ -999,11 +1068,6 @@ def edit_plant_modal(name: str):
                                 hx-swap="innerHTML"
                                 title="Volver al expediente técnico">
                             ← EXPEDIENTE
-                        </button>
-                        <button type="submit"
-                                class="btn btn-sm btn-green"
-                                style="font-weight: 700; padding: 6px 14px; box-shadow: 0 0 10px rgba(166, 227, 161, 0.25);">
-                            💾 [GUARDAR CAMBIOS]
                         </button>
                         <button type="button"
                                 class="modal-close-btn"
@@ -1019,7 +1083,7 @@ def edit_plant_modal(name: str):
                     <!-- Informative Banner -->
                     <div style="background: rgba(166, 227, 161, 0.08); border: 1px solid var(--green-sage); border-radius: 3px; padding: 10px 14px; font-size: 11.5px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
                         <div>
-                            <span style="color: var(--green-sage); font-weight: bold;">EDICIÓN ACTIVA:</span> Modifique los datos que desee actualizar y haga clic en <strong>[GUARDAR CAMBIOS]</strong> o presione Enter para guardar.
+                            <span style="color: var(--green-sage); font-weight: bold;">EDICIÓN ACTIVA:</span> Modifique los datos que desee actualizar y haga clic en <strong>[GUARDAR CAMBIOS]</strong> al pie del formulario.
                         </div>
                         <div style="color: var(--text-dim); font-size: 11px; white-space: nowrap;">
                             CLAVE SQLITE: <strong style="color: var(--red-crimson);">{plant.get('name')}</strong>
@@ -1041,16 +1105,25 @@ def edit_plant_modal(name: str):
                                    readonly
                                    style="opacity: 0.7; cursor: not-allowed;"
                                    class="form-input" />
-                            <span style="font-size: 10px; color: var(--text-dim);">La clave es el identificador primario inmutable en la base de datos SQLite.</span>
+                            <span style="font-size: 10px; color: var(--text-dim);">La clave es el identificador primario inmutable.</span>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="edit-aka">ALIAS / NOMBRE ESPECIAL (AKA)</label>
+                            <input type="text"
+                                   id="edit-aka"
+                                   name="aka"
+                                   value="{plant.get('aka') or ''}"
+                                   placeholder="Ej. ocaso, darkRed, golden..."
+                                   class="form-input" />
+                            <span style="font-size: 10px; color: var(--text-dim);">Nombre especial para plantas injertadas o cultivares.</span>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label" for="edit-status">ESTADO SANITARIO *</label>
                             <select id="edit-status" name="status" class="form-select" required>
-                                <option value="Triving" {'selected' if st == 'Triving' else ''}>● Próspero (Triving)</option>
-                                <option value="Ok" {'selected' if st == 'Ok' else ''}>● Saludable (Ok)</option>
-                                <option value="Disease" {'selected' if is_disease else ''}>● Enfermo (Disease)</option>
-                                <option value="Extremely Ill" {'selected' if st == 'Extremely Ill' else ''}>● Muy Enfermo (Extremely Ill)</option>
+                                <option value="OK" {'selected' if st == 'OK' or st in ('Ok', 'Triving') else ''}>● OK (Saludable / Verde)</option>
+                                <option value="notOK" {'selected' if st == 'notOK' or is_disease or st == 'Extremely Ill' else ''}>● notOK (Atención / Naranja)</option>
                             </select>
                         </div>
 
@@ -1101,7 +1174,7 @@ def edit_plant_modal(name: str):
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label" for="edit-sow-date">FECHA SIEMBRA / ESQUEJE</label>
+                            <label class="form-label" for="edit-sow-date">FECHA SIEMBRA / ESQUEJE / INJERTO</label>
                             <input type="date"
                                    id="edit-sow-date"
                                    name="sowing_cutting_date"
@@ -1114,7 +1187,6 @@ def edit_plant_modal(name: str):
                             <input type="text"
                                    id="edit-graft"
                                    name="graft"
-                                   list="existing-keys-list-edit"
                                    value="{plant.get('graft') or ''}"
                                    placeholder="Ej. Sin injerto, o Myrtillocactus"
                                    class="form-input" />
@@ -1207,6 +1279,7 @@ def edit_plant_modal(name: str):
 def update_plant_submit(
     name: str,
     species: str = Form(...),
+    aka: str = Form(""),
     location: str = Form(""),
     registration_date: str = Form(""),
     padres: str = Form(""),
@@ -1215,12 +1288,13 @@ def update_plant_submit(
     last_pruned: str = Form(""),
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
-    status: str = Form("Ok"),
+    status: str = Form("OK"),
     comentarios: str = Form("")
 ):
     """Processes updates to plant record and directly returns updated view modal with live OOB card update."""
     data = {
         "species": species,
+        "aka": aka,
         "location": location,
         "registration_date": registration_date,
         "padres": padres,
@@ -1638,6 +1712,7 @@ def export_inventory_csv():
     # Header
     writer.writerow([
         "CLAVE",
+        "ALIAS_AKA",
         "ESPECIE",
         "ESTADO_SANITARIO",
         "UBICACION",
@@ -1655,6 +1730,7 @@ def export_inventory_csv():
     for p in plants:
         writer.writerow([
             p.get("name", ""),
+            p.get("aka", ""),
             p.get("species", ""),
             p.get("status", ""),
             p.get("location", ""),
@@ -1760,3 +1836,261 @@ def serve_image(filename: str):
 def close_modal():
     """Clears modal drawer."""
     return HTMLResponse("")
+
+
+@router.get("/plants/{name}/dossier", response_class=HTMLResponse)
+def view_printable_dossier(name: str):
+    """
+    Renders a dedicated, printable botanical technical dossier.
+    Optimized for browser printing and PDF generation with print CSS rules.
+    """
+    plant = db.get_plant(name)
+    if not plant:
+        raise HTTPException(status_code=404, detail="Ejemplar botánico no encontrado")
+
+    status = plant.get("status", "Ok")
+    status_cls = STATUS_BADGE_CLASSES.get(status, "status-Ok")
+    status_es = STATUS_SPANISH.get(status, status)
+    photos = plant.get("photos", [])
+    age_short, age_detailed = db.calculate_plant_age(plant.get("sowing_cutting_date"), plant.get("graft", ""))
+
+    photos_html = ""
+    if photos:
+        items = []
+        for ph in photos:
+            items.append(f'''
+            <div class="dossier-photo-card">
+                <img src="/images/{ph}" alt="{plant.get('name')}" class="dossier-photo-img" />
+                <div class="dossier-photo-cap">{ph}</div>
+            </div>
+            ''')
+        photos_html = f'''
+        <div class="dossier-section-title">REGISTRO FOTOGRÁFICO Y MORFOLÓGICO</div>
+        <div class="dossier-gallery">
+            {"".join(items)}
+        </div>
+        '''
+
+    html = f'''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dossier Técnico - [{plant.get('name')}] {plant.get('species')}</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+        .dossier-container {{
+            max-width: 900px;
+            margin: 24px auto;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-dim);
+            border-radius: 4px;
+            padding: 32px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }}
+        .dossier-topbar {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border-red);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }}
+        .dossier-brand {{
+            font-family: var(--font-mono);
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-main);
+            letter-spacing: 1px;
+        }}
+        .dossier-badge-status {{
+            font-size: 13px;
+            padding: 4px 12px;
+            border-radius: 3px;
+            font-weight: 700;
+        }}
+        .dossier-taxa-box {{
+            background: var(--bg-mantle);
+            border: 1px solid var(--border-dim);
+            padding: 16px;
+            border-radius: 3px;
+            margin-bottom: 24px;
+        }}
+        .dossier-species {{
+            font-size: 22px;
+            font-style: italic;
+            color: var(--blue-sky);
+            margin: 6px 0;
+        }}
+        .dossier-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+            font-size: 13px;
+        }}
+        .dossier-table th, .dossier-table td {{
+            padding: 10px 14px;
+            border: 1px solid var(--border-dim);
+            text-align: left;
+        }}
+        .dossier-table th {{
+            background: var(--bg-mantle);
+            color: var(--red-crimson);
+            font-size: 11px;
+            letter-spacing: 0.8px;
+            width: 28%;
+        }}
+        .dossier-table td {{
+            background: var(--bg-surface);
+            color: var(--text-main);
+        }}
+        .dossier-gallery {{
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+            margin-top: 14px;
+            margin-bottom: 24px;
+        }}
+        .dossier-photo-card {{
+            background: var(--bg-mantle);
+            border: 1px solid var(--border-dim);
+            border-radius: 3px;
+            overflow: hidden;
+            text-align: center;
+        }}
+        .dossier-photo-img {{
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            display: block;
+        }}
+        .dossier-photo-cap {{
+            padding: 6px 8px;
+            font-size: 10px;
+            color: var(--text-sub);
+        }}
+        .dossier-actions {{
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-dim);
+        }}
+        @media print {{
+            body {{
+                background: #ffffff !important;
+                color: #111111 !important;
+            }}
+            .dossier-container {{
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 12px !important;
+                box-shadow: none !important;
+                border: none !important;
+                background: #ffffff !important;
+            }}
+            .dossier-actions {{
+                display: none !important;
+            }}
+            .dossier-brand, .dossier-table th, .dossier-table td, .dossier-taxa-box {{
+                color: #000000 !important;
+                background: #ffffff !important;
+                border-color: #cccccc !important;
+            }}
+            .dossier-species {{
+                color: #1a4d2e !important;
+            }}
+            .dossier-table th {{
+                background: #f4f4f4 !important;
+                color: #222222 !important;
+            }}
+        }}
+    </style>
+</head>
+<body data-theme="catpuchin">
+    <div class="dossier-container">
+        <div class="dossier-topbar">
+            <div>
+                <div class="dossier-brand">[PLANTATION] EXPEDIENTE BOTÁNICO OFICIAL</div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">SISTEMA TÉCNICO DE REGISTRO & TAXONOMÍA DE COLECCIÓN</div>
+            </div>
+            <div>
+                <span class="status-badge {status_cls} dossier-badge-status">● {status_es}</span>
+            </div>
+        </div>
+
+        <div class="dossier-taxa-box">
+            <div style="font-size: 11px; color: var(--red-crimson); font-weight: bold; letter-spacing: 1px;">IDENTIFICADOR & TAXÓN</div>
+            <div class="dossier-species">{plant.get('species')}</div>
+            <div style="font-size: 13px; color: var(--text-main); display: flex; gap: 14px; flex-wrap: wrap;">
+                <span>CLAVE DE COLECCIÓN: <strong style="color: var(--red-crimson);">[{plant.get('name')}]</strong></span>
+                {f'<span>ALIAS / AKA: <strong style="color: var(--peach-orange);">"{plant.get("aka")}"</strong></span>' if plant.get("aka") else ''}
+                <span>UBICACIÓN FÍSICA: <strong>{plant.get('location') or 'Sin registrar'}</strong></span>
+            </div>
+        </div>
+
+        <div class="dossier-section-title">DATOS MORFOMÉTRICOS & REGISTRO AGRONÓMICO</div>
+        <table class="dossier-table">
+            <tbody>
+                <tr>
+                    <th>ALIAS / NOMBRE ESPECIAL (AKA)</th>
+                    <td><strong>{plant.get('aka') or '—'}</strong></td>
+                </tr>
+                <tr>
+                    <th>FECHA DE REGISTRO</th>
+                    <td>{plant.get('registration_date') or '—'}</td>
+                </tr>
+                <tr>
+                    <th>EDAD CALCULADA</th>
+                    <td><strong>{age_detailed}</strong> ({age_short})</td>
+                </tr>
+                <tr>
+                    <th>FECHA SIEMBRA / ESQUEJADO</th>
+                    <td>{plant.get('sowing_cutting_date') or '—'}</td>
+                </tr>
+                <tr>
+                    <th>LINAJE / PROGENITORES (PADRES)</th>
+                    <td>{plant.get('padres') or 'Desconocido'}</td>
+                </tr>
+                <tr>
+                    <th>INJERTO / PATRÓN</th>
+                    <td>{plant.get('graft') or 'Sin injerto (Raíz propia)'}</td>
+                </tr>
+                <tr>
+                    <th>ÚLTIMA PODA</th>
+                    <td>{plant.get('last_pruned') or '—'}</td>
+                </tr>
+                <tr>
+                    <th>ÚLTIMO TRASPLANTE</th>
+                    <td>{plant.get('last_repotted') or '—'}</td>
+                </tr>
+                <tr>
+                    <th>FERTILIZACIÓN / NUTRICIÓN</th>
+                    <td>{plant.get('fertilizante') or '—'}</td>
+                </tr>
+                <tr>
+                    <th>NOTAS BOTÁNICAS & OBSERVACIONES</th>
+                    <td>{plant.get('comentarios') or 'Sin observaciones registradas.'}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        {photos_html}
+
+        <div class="dossier-actions">
+            <button type="button" class="btn btn-primary" onclick="window.print()">
+                🖨 [IMPRIMIR EXPEDIENTE]
+            </button>
+            <a href="/pdf/plant/{plant.get('name')}" class="btn btn-red" target="_blank">
+                🗎 [DESCARGAR PDF GENERADO]
+            </a>
+            <button type="button" class="btn" onclick="window.close(); if(!window.closed) window.location.href='/';">
+                ✕ [CERRAR]
+            </button>
+        </div>
+    </div>
+</body>
+</html>'''
+    return HTMLResponse(html)
+

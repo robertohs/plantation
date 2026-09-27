@@ -390,40 +390,32 @@ body {
   color: var(--bg-crust);
 }
 
-.status-pill-ill {
-  border-color: #59292d;
-  color: var(--red-crimson);
+.status-pill-ok {
+  border-color: #29593a;
+  color: var(--green-sage);
 }
-.status-pill-ill.active {
-  background-color: var(--red-crimson);
+.status-pill-ok.active {
+  background-color: var(--green-sage);
   color: #111;
 }
 
-.status-pill-diseaced {
+.status-pill-notok {
   border-color: #5c3a28;
   color: var(--peach-orange);
 }
-.status-pill-diseaced.active {
+.status-pill-notok.active {
   background-color: var(--peach-orange);
   color: #111;
 }
 
-.status-pill-ok {
-  border-color: #293d59;
+.status-pill-age {
+  border-color: var(--border-active);
   color: var(--blue-sky);
 }
-.status-pill-ok.active {
+.status-pill-age.active {
   background-color: var(--blue-sky);
   color: #111;
-}
-
-.status-pill-triving {
-  border-color: #29593a;
-  color: var(--green-sage);
-}
-.status-pill-triving.active {
-  background-color: var(--green-sage);
-  color: #111;
+  border-color: var(--blue-sky);
 }
 
 /* Stats Summary Line */
@@ -520,28 +512,35 @@ body {
   flex-shrink: 0;
 }
 
-.status-Extremely-Ill {
-  background-color: var(--red-dark);
-  border-color: var(--red-crimson);
-  color: var(--red-crimson);
+.status-OK,
+.status-Ok,
+.status-Triving {
+  background-color: var(--green-dark);
+  border-color: var(--green-sage);
+  color: var(--green-sage);
 }
 
-.status-Diseaced {
+.status-notOK,
+.status-Diseaced,
+.status-Disease,
+.status-Extremely-Ill {
   background-color: var(--peach-dark);
   border-color: var(--peach-orange);
   color: var(--peach-orange);
 }
 
-.status-Ok {
-  background-color: var(--blue-dark);
-  border-color: var(--blue-sky);
-  color: var(--blue-sky);
-}
-
-.status-Triving {
-  background-color: var(--green-dark);
-  border-color: var(--green-sage);
-  color: var(--green-sage);
+.plant-aka {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--peach-orange);
+  background: var(--peach-dark);
+  border: 1px solid rgba(245, 169, 127, 0.4);
+  padding: 1.5px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 .plant-species {

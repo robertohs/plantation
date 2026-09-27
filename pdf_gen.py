@@ -15,11 +15,13 @@ import weasyprint
 from img_conv import IMAGES_DIR
 
 STATUS_COLORS = {
-    "Extremely Ill": ("#ed8796", "#362629", "MUY ENFERMO"),
-    "Diseaced": ("#f5a97f", "#3a2e28", "ENFERMO"),
-    "Disease": ("#f5a97f", "#3a2e28", "ENFERMO"),
-    "Ok": ("#8aadf4", "#1e283d", "SALUDABLE"),
-    "Triving": ("#a6da95", "#1e332a", "PRÓSPERO")
+    "OK": ("#a6da95", "#1e332a", "OK"),
+    "notOK": ("#f5a97f", "#3a2e28", "notOK"),
+    "Ok": ("#a6da95", "#1e332a", "OK"),
+    "Triving": ("#a6da95", "#1e332a", "OK"),
+    "Disease": ("#f5a97f", "#3a2e28", "notOK"),
+    "Diseaced": ("#f5a97f", "#3a2e28", "notOK"),
+    "Extremely Ill": ("#f5a97f", "#3a2e28", "notOK")
 }
 
 
@@ -326,15 +328,18 @@ def render_plant_card_html(p: Dict[str, Any]) -> str:
     else:
         gallery_content = f"""<div class="photo-gallery">{''.join(photo_html_items)}</div>"""
 
+    aka_str = f'<span style="color: #f5a97f; font-weight: bold; margin-left: 6px; font-size: 8.5pt;">"{p.get("aka")}"</span>' if p.get('aka') else ""
+
     return f"""
     <div class="card">
         <div class="card-header">
             <div>
                 <span class="plant-key-badge">[ID: {p.get('name', 'N/A')}]</span>
+                {aka_str}
             </div>
             <div>
                 <span class="status-badge" style="color: {color}; border-color: {color}; background-color: {bg};">
-                    ● {es_status} ({status})
+                    ● {es_status}
                 </span>
             </div>
         </div>

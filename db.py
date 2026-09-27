@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DB")
 DB_PATH = os.path.join(DB_DIR, "plantation.db")
 
-VALID_STATUSES = ["Extremely Ill", "Disease", "Diseaced", "Ok", "Triving"]
+VALID_STATUSES = ["OK", "notOK"]
 
 def get_connection() -> sqlite3.Connection:
     """Returns a thread-safe connection to the SQLite database with row_factory configured."""
@@ -26,13 +26,14 @@ def get_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Initializes the database schema and indexes."""
+    """Initializes the database schema, migrations, and indexes."""
     os.makedirs(DB_DIR, exist_ok=True)
     with get_connection() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS plants (
                 name TEXT PRIMARY KEY,
                 species TEXT NOT NULL,
+                aka TEXT DEFAULT '',
                 location TEXT DEFAULT '',
                 registration_date TEXT DEFAULT '',
                 padres TEXT DEFAULT '',
@@ -42,12 +43,27 @@ def init_db() -> None:
                 last_repotted TEXT DEFAULT '',
                 fertilizante TEXT DEFAULT '',
                 photos TEXT DEFAULT '[]',
-                status TEXT NOT NULL DEFAULT 'Ok',
+                status TEXT NOT NULL DEFAULT 'OK',
                 comentarios TEXT DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Safe migration for aka column in existing database
+        try:
+            conn.execute("ALTER TABLE plants ADD COLUMN aka TEXT DEFAULT '';")
+        except sqlite3.OperationalError:
+            pass
+
+        # Migrate all existing statuses to the 2 requested states: OK (green) or notOK (orange)
+        conn.execute("UPDATE plants SET status = 'OK' WHERE status IN ('Ok', 'Triving', 'OK', 'Saludable', 'Próspero');")
+        conn.execute("UPDATE plants SET status = 'notOK' WHERE status NOT IN ('OK');")
+
+        # Set sample AKAs for grafted plants if empty
+        conn.execute("UPDATE plants SET aka = 'ocaso' WHERE name = 'A2' AND (aka IS NULL OR aka = '');")
+        conn.execute("UPDATE plants SET aka = 'golden' WHERE name = '900' AND (aka IS NULL OR aka = '');")
+        conn.execute("UPDATE plants SET aka = 'darkRed' WHERE name = 'B12' AND (aka IS NULL OR aka = '');")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_plants_species ON plants(species);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_plants_status ON plants(status);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_plants_location ON plants(location);")
@@ -55,6 +71,16 @@ def init_db() -> None:
 
     # Seed initial specimens if table is empty
     seed_default_data()
+
+
+def normalize_status(val: Optional[str]) -> str:
+    """Normalizes any status representation strictly to 'OK' or 'notOK'."""
+    if not val:
+        return "OK"
+    s = str(val).strip().lower()
+    if s in ("ok", "triving", "saludable", "prospero", "próspero", "healthy", "good", "bien"):
+        return "OK"
+    return "notOK"
 
 
 def clean_key(key: str) -> str:
@@ -137,9 +163,37 @@ def calculate_plant_age(
     return f"{y_lbl}, {rem_lbl} ({total_months} m)", f"{y_lbl}, {rem_lbl} (Total: {total_months} meses)"
 
 
+def get_plant_age_months(
+    sowing_cutting_date: Optional[str],
+    graft: Optional[str] = "",
+    now: Optional[datetime] = None
+) -> Optional[int]:
+    """Returns the plant age in total integer months, or None if unknown."""
+    d_start = parse_plant_date(sowing_cutting_date)
+    if not d_start and graft:
+        d_start = parse_plant_date(graft)
+    if not d_start:
+        return None
+    if now is None:
+        now = datetime.now()
+    if d_start > now:
+        return 0
+    diff_years = now.year - d_start.year
+    diff_months = now.month - d_start.month
+    if now.day < d_start.day:
+        diff_months -= 1
+    return max(0, diff_years * 12 + diff_months)
+
+
 def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    """Converts a SQLite row into a serializable dict and parses photos JSON."""
+    """Converts a SQLite row into a serializable dict, parses photos JSON, and ensures aka string."""
     d = dict(row)
+    if "aka" not in d or d["aka"] is None:
+        d["aka"] = ""
+    # Ensure status is normalized to 2-state OK or notOK
+    if d.get("status") not in ("OK", "notOK"):
+        d["status"] = "OK" if d.get("status") in ("Ok", "Triving", "Saludable", "Próspero") else "notOK"
+
     if "photos" in d:
         try:
             d["photos"] = json.loads(d["photos"]) if d["photos"] else []
@@ -153,21 +207,28 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 def get_plants(
     search_query: Optional[str] = None,
     status_filter: Optional[str] = None,
+    age_filter: Optional[str] = None,
     sort_by: str = "name"
 ) -> List[Dict[str, Any]]:
-    """Fetches plants with optional search and status filtering."""
+    """Fetches plants with optional search, 2-state status filtering (OK / notOK), and age filtering."""
     with get_connection() as conn:
         query = "SELECT * FROM plants WHERE 1=1"
         params: List[Any] = []
 
-        if status_filter and status_filter.strip() and status_filter != "ALL":
-            query += " AND status = ?"
-            params.append(status_filter.strip())
+        # Robust 2-state status filtering (OK vs notOK)
+        if status_filter:
+            s_clean = status_filter.strip().lower()
+            if s_clean in ("all", "", "none", "null", "undefined", "*"):
+                pass  # Show all statuses
+            elif s_clean in ("ok", "triving", "saludable", "prospero", "próspero"):
+                query += " AND (status = 'OK' OR LOWER(status) IN ('ok', 'triving', 'saludable', 'prospero', 'próspero'))"
+            elif s_clean in ("notok", "not_ok", "not ok", "disease", "diseaced", "ill", "extremely ill", "enfermo"):
+                query += " AND (status = 'notOK' OR LOWER(status) NOT IN ('ok', 'triving', 'saludable', 'prospero', 'próspero'))"
 
         if search_query and search_query.strip():
             sq = f"%{search_query.strip()}%"
-            query += " AND (name LIKE ? OR species LIKE ? OR location LIKE ? OR padres LIKE ? OR comentarios LIKE ?)"
-            params.extend([sq, sq, sq, sq, sq])
+            query += " AND (name LIKE ? OR aka LIKE ? OR species LIKE ? OR location LIKE ? OR padres LIKE ? OR graft LIKE ? OR comentarios LIKE ?)"
+            params.extend([sq, sq, sq, sq, sq, sq, sq])
 
         # Alphanumeric sorting (lengths first then natural order for keys like 1, 2, A1, A2, 999)
         if sort_by == "name":
@@ -183,7 +244,34 @@ def get_plants(
 
         cursor = conn.execute(query, params)
         rows = cursor.fetchall()
-        return [row_to_dict(r) for r in rows]
+        result = [row_to_dict(r) for r in rows]
+
+        # Filter by Age if specified
+        if age_filter:
+            a_clean = age_filter.strip().lower()
+            if a_clean in ("all", "", "none", "null", "undefined", "*"):
+                pass  # Show all ages
+            else:
+                filtered = []
+                for p in result:
+                    m = get_plant_age_months(p.get("sowing_cutting_date"), p.get("graft", ""))
+                    if a_clean in ("less_1", "<1", "less_than_1", "menor_1"):
+                        # Menos de 1 año (< 12 meses)
+                        if m is not None and m < 12:
+                            filtered.append(p)
+                    elif a_clean in ("1_to_2", "1-2", "1_2", "1to2"):
+                        # 1 a 2 años (12 a < 36 meses)
+                        if m is not None and 12 <= m < 36:
+                            filtered.append(p)
+                    elif a_clean in ("3_plus", "3+", "3plus", "mas_3"):
+                        # 3 o más años (>= 36 meses)
+                        if m is not None and m >= 36:
+                            filtered.append(p)
+                    else:
+                        filtered.append(p)
+                return filtered
+
+        return result
 
 
 def get_plant(name: str) -> Optional[Dict[str, Any]]:
@@ -208,9 +296,10 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     if not species:
         return False, "La especie botánica o nombre común es obligatoria."
 
-    status = (data.get("status") or "Ok").strip()
-    if status not in VALID_STATUSES:
-        status = "Ok"
+    raw_status = (data.get("status") or "OK").strip()
+    status = "OK" if raw_status in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
+
+    aka = (data.get("aka") or "").strip()
 
     photos = data.get("photos", [])
     if isinstance(photos, list):
@@ -231,13 +320,14 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
 
         conn.execute("""
             INSERT INTO plants (
-                name, species, location, registration_date, padres,
+                name, species, aka, location, registration_date, padres,
                 sowing_cutting_date, graft, last_pruned, last_repotted,
                 fertilizante, photos, status, comentarios, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             key,
             species,
+            aka,
             (data.get("location") or "").strip(),
             reg_date,
             (data.get("padres") or "").strip(),
@@ -267,9 +357,10 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
     if not species:
         return False, "La especie botánica o nombre común es obligatoria."
 
-    status = (data.get("status") or "Ok").strip()
-    if status not in VALID_STATUSES:
-        status = "Ok"
+    raw_status = (data.get("status") or "OK").strip()
+    status = "OK" if raw_status in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
+
+    aka = (data.get("aka") or "").strip()
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -281,6 +372,7 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
         conn.execute("""
             UPDATE plants SET
                 species = ?,
+                aka = ?,
                 location = ?,
                 registration_date = ?,
                 padres = ?,
@@ -295,6 +387,7 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
             WHERE name = ?
         """, (
             species,
+            aka,
             (data.get("location") or "").strip(),
             (data.get("registration_date") or "").strip(),
             (data.get("padres") or "").strip(),
@@ -408,11 +501,11 @@ def get_stats() -> Dict[str, Any]:
     """Computes overall catalog statistics."""
     with get_connection() as conn:
         total = conn.execute("SELECT COUNT(*) as c FROM plants").fetchone()["c"]
-        status_counts = {s: 0 for s in VALID_STATUSES}
-        cursor = conn.execute("SELECT status, COUNT(*) as c FROM plants GROUP BY status")
+        status_counts = {"OK": 0, "notOK": 0}
+        cursor = conn.execute("SELECT status FROM plants")
         for r in cursor.fetchall():
-            if r["status"] in status_counts:
-                status_counts[r["status"]] = r["c"]
+            st = normalize_status(r["status"])
+            status_counts[st] = status_counts.get(st, 0) + 1
 
         locations_count = conn.execute("SELECT COUNT(DISTINCT location) as c FROM plants WHERE location != ''").fetchone()["c"]
 
@@ -439,7 +532,7 @@ def get_inventory_stats() -> Dict[str, Any]:
         rows = conn.execute("SELECT name, species, status, location, graft, photos FROM plants").fetchall()
         
         total = len(rows)
-        status_counts = {s: 0 for s in VALID_STATUSES}
+        status_counts = {"OK": 0, "notOK": 0}
         with_photos = 0
         without_photos = 0
         with_graft = 0
@@ -448,9 +541,8 @@ def get_inventory_stats() -> Dict[str, Any]:
         total_photos = 0
 
         for r in rows:
-            st = r["status"]
-            if st in status_counts:
-                status_counts[st] += 1
+            st = normalize_status(r["status"])
+            status_counts[st] = status_counts.get(st, 0) + 1
 
             # Photos
             p_list = []
@@ -591,15 +683,19 @@ def seed_default_data() -> None:
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for p in initial_plants:
+            aka_val = p.get("aka", "")
+            raw_st = p.get("status", "OK")
+            st_val = "OK" if raw_st in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
             conn.execute("""
                 INSERT INTO plants (
-                    name, species, location, registration_date, padres,
+                    name, species, aka, location, registration_date, padres,
                     sowing_cutting_date, graft, last_pruned, last_repotted,
                     fertilizante, photos, status, comentarios, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 p["name"],
                 p["species"],
+                aka_val,
                 p["location"],
                 p["registration_date"],
                 p["padres"],
@@ -609,7 +705,7 @@ def seed_default_data() -> None:
                 p["last_repotted"],
                 p["fertilizante"],
                 json.dumps(p["photos"]),
-                p["status"],
+                st_val,
                 p["comentarios"],
                 now,
                 now
