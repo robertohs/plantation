@@ -1,3 +1,3 @@
-vived plat login
+vived plant login
 
 DO NOT USE JS/TS
