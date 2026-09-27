@@ -2021,16 +2021,15 @@ def view_printable_dossier(name: str):
         </div>
 
         <div class="dossier-taxa-box">
-            <div style="font-size: 11px; color: var(--red-crimson); font-weight: bold; letter-spacing: 1px;">IDENTIFICADOR & TAXÓN</div>
+            <div style="font-size: 11px; color: var(--red-crimson); font-weight: bold; letter-spacing: 1px;">IDENTIFICADOR</div>
             <div class="dossier-species">{plant.get('species')}</div>
             <div style="font-size: 13px; color: var(--text-main); display: flex; gap: 14px; flex-wrap: wrap;">
                 <span>CLAVE DE COLECCIÓN: <strong style="color: var(--red-crimson);">[{plant.get('name')}]</strong></span>
                 {f'<span>ALIAS / AKA: <strong style="color: var(--peach-orange);">"{plant.get("aka")}"</strong></span>' if plant.get("aka") else ''}
-                <span>UBICACIÓN FÍSICA: <strong>{plant.get('location') or 'Sin registrar'}</strong></span>
             </div>
         </div>
 
-        <div class="dossier-section-title">DATOS MORFOMÉTRICOS & REGISTRO AGRONÓMICO</div>
+        <div class="dossier-section-title">DATOS & REGISTRO </div>
         <table class="dossier-table">
             <tbody>
                 <tr>
@@ -2042,19 +2041,19 @@ def view_printable_dossier(name: str):
                     <td>{plant.get('registration_date') or '—'}</td>
                 </tr>
                 <tr>
-                    <th>EDAD CALCULADA</th>
-                    <td><strong>{age_detailed}</strong> ({age_short})</td>
+                    <th>EDAD </th>
+                    <td><strong>{age_detailed}</strong> </td>
                 </tr>
                 <tr>
-                    <th>FECHA SIEMBRA / ESQUEJADO</th>
+                    <th>FECHA SIEMBRA/ESQUEJADO</th>
                     <td>{plant.get('sowing_cutting_date') or '—'}</td>
                 </tr>
                 <tr>
-                    <th>LINAJE / PROGENITORES (PADRES)</th>
+                    <th>LINAJE(PADRES)</th>
                     <td>{plant.get('padres') or 'Desconocido'}</td>
                 </tr>
                 <tr>
-                    <th>INJERTO / PATRÓN</th>
+                    <th>INJERTO</th>
                     <td>{plant.get('graft') or 'Sin injerto (Raíz propia)'}</td>
                 </tr>
                 <tr>
@@ -2070,7 +2069,7 @@ def view_printable_dossier(name: str):
                     <td>{plant.get('fertilizante') or '—'}</td>
                 </tr>
                 <tr>
-                    <th>NOTAS BOTÁNICAS & OBSERVACIONES</th>
+                    <th>NOTAS & OBSERVACIONES</th>
                     <td>{plant.get('comentarios') or 'Sin observaciones registradas.'}</td>
                 </tr>
             </tbody>
