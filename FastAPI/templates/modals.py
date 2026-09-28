@@ -67,7 +67,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             <div class="form-group">
                 <label class="form-label" for="inp-name">IDENTIFICADOR / CLAVE (KEY) *</label>
                 {key_input}
-                <div class="form-help">Alfanumérico único (máx 20 caracteres).</div>
             </div>
 
             <div class="form-group">
@@ -80,7 +79,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        placeholder="Ej: Ariocarpus kotschoubeyanus"
                        required
                        autocomplete="off" />
-                <div class="form-help">Nombre botánico en cursiva según normas taxonómicas.</div>
             </div>
 
             <div class="form-group">
@@ -92,7 +90,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        value="{aka_val}"
                        placeholder="Ej: ocaso, golden, darkRed, clon-A"
                        autocomplete="off" />
-                <div class="form-help">Nombre informal o apodo del ejemplar.</div>
             </div>
 
             <div class="form-group">
@@ -104,7 +101,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        value="{loc_val}"
                        placeholder="Ej: Invernadero A - Banco 1"
                        autocomplete="off" />
-                <div class="form-help">Localización física en el vivero o invernadero.</div>
             </div>
 
             <div class="form-group">
@@ -119,7 +115,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                         <span class="status-badge status-notOK" style="font-size: 11px;">● notOK</span>
                     </label>
                 </div>
-                <div class="form-help">Vigor general / cuarentena o enfermedad.</div>
             </div>
 
             <div class="form-group">
@@ -131,7 +126,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        value="{height_val}"
                        placeholder="Ej: 2026-03-10 - 14.5 cm"
                        autocomplete="off" />
-                <div class="form-help">Medición registrada (Formato: Fecha - Altura CM).</div>
             </div>
 
             <div class="form-group">
@@ -141,7 +135,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        name="sowing_cutting_date"
                        class="form-input"
                        value="{sow_val}" />
-                <div class="form-help">Punto cero para cálculo biológico de edad del ejemplar.</div>
             </div>
 
             <div class="form-group">
@@ -153,7 +146,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        value="{graft_val}"
                        list="existing-plant-keys"
                        placeholder="Ej: Sin injerto / Myrtillocactus" />
-                <div class="form-help">Patrón o portainjerto utilizado.</div>
             </div>
 
             <div class="form-group">
@@ -165,7 +157,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        value="{padres_val}"
                        list="existing-plant-keys"
                        placeholder="Ej: A1 + 900, Clon silvestre..." />
-                <div class="form-help">Progenitores o procedencia genética.</div>
             </div>
 
             <div class="form-group">
@@ -176,7 +167,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        class="form-input"
                        value="{pruned_val}"
                        placeholder="Ej: 2025-10-15 (Poda de raíces)" />
-                <div class="form-help">Fecha y descripción del último mantenimiento.</div>
             </div>
 
             <div class="form-group">
@@ -187,7 +177,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        class="form-input"
                        value="{repotted_val}"
                        placeholder="Ej: 2025-02-18 (Pómice 80%)" />
-                <div class="form-help">Fecha de mudanza y composición del sustrato.</div>
             </div>
 
             <div class="form-group full">
@@ -313,7 +302,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
 
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <span class="form-label" style="color: var(--red-crimson);">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>
+                        <span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>
                         <span style="font-size: 10.5px; color: var(--text-dim);">Formato auto-convertido a AVIF/WebP (&lt;KEY&gt;_&lt;n&gt;)</span>
                     </div>
 

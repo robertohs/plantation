@@ -10,7 +10,7 @@ import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile, File
-from fastapi.responses import HTMLResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 
 import db
 from img_conv import validate_and_save_photo, delete_photo_file, cleanup_plant_photos, IMAGES_DIR
@@ -18,6 +18,7 @@ from pdf_gen import generate_catalog_pdf, generate_single_plant_pdf
 from .templates.components import (
     render_card_html,
     render_plants_grid,
+    render_plants_page,
     render_stats_bar,
     render_photo_item_html
 )
@@ -26,7 +27,6 @@ from .templates.modals import (
     render_new_plant_modal,
     render_edit_plant_modal
 )
-from .templates.dossier import render_printable_dossier_html
 from .templates.admin import render_admin_panel_content
 from .templates.layout import render_index_html
 
@@ -53,16 +53,33 @@ def list_plants_partial(
     search: Optional[str] = None,
     status: Optional[str] = None,
     age: Optional[str] = None,
-    height: Optional[str] = None
+    height: Optional[str] = None,
+    page: int = 1
 ):
-    """HTMX endpoint returning reactive filtered plants grid."""
+    """HTMX endpoint returning reactive filtered plants grid or infinite scroll card batch."""
     plants = db.get_plants(
         search_query=search,
         status_filter=status,
         age_filter=age,
         height_filter=height
     )
-    return HTMLResponse(render_plants_grid(plants))
+    if page > 1:
+        return HTMLResponse(render_plants_page(
+            plants,
+            page=page,
+            search=search,
+            status=status,
+            age=age,
+            height=height
+        ))
+    return HTMLResponse(render_plants_grid(
+        plants,
+        page=1,
+        search=search,
+        status=status,
+        age=age,
+        height=height
+    ))
 
 
 # ==============================================================================
@@ -202,10 +219,9 @@ def update_plant_submit(
 
     modal_content = render_view_plant_modal_content(updated_plant, alert_msg="Cambios guardados exitosamente.")
     oob_card = f'<div id="plant-card-{name}" hx-swap-oob="outerHTML">{render_card_html(updated_plant)}</div>'
-    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
 
-    return HTMLResponse(modal_content + oob_card + oob_stats + oob_admin)
+    return HTMLResponse(modal_content + oob_card + oob_admin)
 
 
 @router.delete("/plants/{name}", response_class=HTMLResponse)
@@ -217,11 +233,10 @@ def delete_plant_endpoint(name: str):
 
     plants = db.get_plants()
     grid_html = render_plants_grid(plants)
-    stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
     admin_oob = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
 
-    return HTMLResponse(grid_html + stats_bar + close_modal_oob + admin_oob)
+    return HTMLResponse(grid_html + close_modal_oob + admin_oob)
 
 
 # ==============================================================================
@@ -250,8 +265,8 @@ async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)
 
     photo_items = [render_photo_item_html(key, ph) for ph in photos]
     oob_card = f'<div id="plant-card-{key}" hx-swap-oob="outerHTML">{render_card_html(updated_plant)}</div>'
-    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
     return HTMLResponse(f"""
         <div class="modal-photo-list">
@@ -260,10 +275,11 @@ async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
             ✓ Nueva fotografía '{saved_fn}' añadida correctamente.
         </div>
-    """ + oob_card + oob_stats + oob_admin)
+    """ + oob_card + oob_admin + oob_count)
 
 
-@router.delete("/plants/{name}/photos/{filename}", response_class=HTMLResponse)
+@router.delete("/plants/{name}/photos/{filename:path}", response_class=HTMLResponse)
+@router.post("/plants/{name}/photos/{filename:path}/delete", response_class=HTMLResponse)
 def remove_plant_photo(name: str, filename: str):
     """Removes a photo from plant record and purges file from disk."""
     key = db.clean_key(name)
@@ -275,8 +291,8 @@ def remove_plant_photo(name: str, filename: str):
     photo_items = [render_photo_item_html(key, ph) for ph in photos]
 
     oob_card = f'<div id="plant-card-{key}" hx-swap-oob="outerHTML">{render_card_html(plant)}</div>'
-    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
     empty_html = '<div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">No hay fotografías adjuntas para este ejemplar. Puede arrastrar o seleccionar imágenes abajo.</div>'
 
@@ -287,7 +303,7 @@ def remove_plant_photo(name: str, filename: str):
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
             ✓ Foto '{filename}' eliminada del expediente.
         </div>
-    """ + oob_card + oob_stats + oob_admin)
+    """ + oob_card + oob_admin + oob_count)
 
 
 # ==============================================================================
@@ -462,10 +478,10 @@ def close_modal():
     return HTMLResponse("")
 
 
-@router.get("/plants/{name}/dossier", response_class=HTMLResponse)
+@router.get("/plants/{name}/dossier")
 def view_printable_dossier(name: str):
-    """Renders printable botanical technical dossier."""
+    """Redirects to the official single plant PDF dossier generator."""
     plant = db.get_plant(name)
     if not plant:
         raise HTTPException(status_code=404, detail="Ejemplar botánico no encontrado")
-    return HTMLResponse(render_printable_dossier_html(plant))
+    return RedirectResponse(url=f"/pdf/plant/{name}", status_code=302)

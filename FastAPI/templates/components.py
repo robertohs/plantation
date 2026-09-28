@@ -3,7 +3,8 @@ Plantation - Modular UI Components
 Contains reusable cards, thumbnails, grid wrappers, and statistics ribbons.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote_plus
 import db
 
 STATUS_BADGE_CLASSES = {
@@ -28,7 +29,7 @@ STATUS_SPANISH = {
 
 
 def render_photo_item_html(plant_name: str, ph: str) -> str:
-    """Renders a photo card in the technical dossier with instant deletion."""
+    """Renders a photo card in the technical dossier with confirmation before deletion."""
     return f"""
         <div class="modal-photo-item">
             <button type="button"
@@ -36,18 +37,22 @@ def render_photo_item_html(plant_name: str, ph: str) -> str:
                     hx-delete="/plants/{plant_name}/photos/{ph}"
                     hx-target="#plant-photos-wrapper"
                     hx-swap="innerHTML"
-                    hx-confirm="¿Está seguro de eliminar esta fotografía de forma permanente?"
+                    hx-confirm="¿Está seguro de eliminar de forma permanente la fotografía '{ph}' del ejemplar {plant_name}?"
+                    onclick="event.stopPropagation();"
                     title="Eliminar foto del ejemplar">✕</button>
-            <img class="modal-photo-thumb" src="/images/{ph}" alt="{ph}" />
+            <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
+                <img class="modal-photo-thumb" src="/images/{ph}" alt="{ph}" />
+            </a>
             <div style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;" title="{ph}">
-                {ph}
+                <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph}</a>
             </div>
             <button type="button"
                     class="photo-delete-btn"
                     hx-delete="/plants/{plant_name}/photos/{ph}"
                     hx-target="#plant-photos-wrapper"
                     hx-swap="innerHTML"
-                    hx-confirm="¿Está seguro de eliminar esta fotografía de forma permanente?"
+                    hx-confirm="¿Está seguro de eliminar de forma permanente la fotografía '{ph}' del ejemplar {plant_name}?"
+                    onclick="event.stopPropagation();"
                     title="Eliminar foto permanentemente">
                 🗑 [ELIMINAR]
             </button>
@@ -99,9 +104,9 @@ def render_card_html(p: Dict[str, Any]) -> str:
         <div class="card-head">
             <div class="card-head-left">
                 <span class="plant-key" title="Clave de ejemplar">{p.get('name')}</span>
+                <span class="status-badge {status_cls}">● {status_es}</span>
                 {aka_html}
             </div>
-            <span class="status-badge {status_cls}">● {status_es}</span>
         </div>
 
         {thumb_img}
@@ -140,8 +145,72 @@ def render_card_html(p: Dict[str, Any]) -> str:
     """
 
 
-def render_plants_grid(plants: List[Dict[str, Any]]) -> str:
-    """Renders the plants cards grid or a friendly empty state."""
+PAGE_SIZE = 4
+
+
+def build_plants_scroll_qs(
+    page: int,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    age: Optional[str] = None,
+    height: Optional[str] = None,
+) -> str:
+    """Builds query string preserving active filters for infinite scroll page requests."""
+    parts = [f"page={page}"]
+    if search and search.strip():
+        parts.append(f"search={quote_plus(search.strip())}")
+    if status and status.strip() not in ("ALL", "", "*"):
+        parts.append(f"status={quote_plus(status.strip())}")
+    if age and age.strip() not in ("ALL", "", "*"):
+        parts.append(f"age={quote_plus(age.strip())}")
+    if height and height.strip() not in ("ALL", "", "*", "todas", "todos"):
+        parts.append(f"height={quote_plus(height.strip())}")
+    return "&".join(parts)
+
+
+def render_infinite_scroll_trigger(
+    next_page: int,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    age: Optional[str] = None,
+    height: Optional[str] = None,
+) -> str:
+    """Renders the revealed HTMX sentinel that requests the next page of cards upon scrolling."""
+    qs = build_plants_scroll_qs(next_page, search, status, age, height)
+    return f"""
+    <div class="infinite-scroll-trigger"
+         id="infinite-scroll-trigger"
+         hx-get="/plants?{qs}"
+         hx-trigger="revealed"
+         hx-swap="outerHTML"
+         style="grid-column: 1 / -1; width: 100%;">
+        <div class="scroll-loader" style="display: flex; align-items: center; justify-content: center; gap: 8px; padding: 20px 0; color: var(--text-dim); font-size: 11.5px; letter-spacing: 0.5px;">
+            <span class="cursor-blink" style="color: var(--blue-sky);">▋</span>
+            <span>CARGANDO MÁS EJEMPLARES...</span>
+        </div>
+    </div>
+    """
+
+
+def render_infinite_scroll_end(total_count: int) -> str:
+    """Renders a clean footer note when all cards in collection/filter have been loaded."""
+    return f"""
+    <div class="infinite-scroll-end" style="grid-column: 1 / -1; text-align: center; padding: 20px 0 10px 0; color: var(--text-dim); font-size: 11px; letter-spacing: 0.8px;">
+        ── TODOS LOS EJEMPLARES CARGADOS ({total_count}) ──
+    </div>
+    """
+
+
+def render_plants_grid(
+    plants: List[Dict[str, Any]],
+    page: int = 1,
+    page_size: int = PAGE_SIZE,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    age: Optional[str] = None,
+    height: Optional[str] = None,
+) -> str:
+    """Renders page 1 of plants cards grid with lazy-load infinite scroll trigger for subsequent cards."""
     if not plants:
         return """
         <div style="background: var(--bg-surface); border: 1px dashed var(--border-dim); padding: 40px 20px; text-align: center; border-radius: 4px; grid-column: 1 / -1;">
@@ -157,8 +226,42 @@ def render_plants_grid(plants: List[Dict[str, Any]]) -> str:
             </button>
         </div>
         """
-    cards = [render_card_html(p) for p in plants]
-    return f"""<div class="plants-grid">{''.join(cards)}</div>"""
+    total = len(plants)
+    page_plants = plants[:page_size]
+    cards = [render_card_html(p) for p in page_plants]
+
+    sentinel_html = ""
+    if total > page_size:
+        sentinel_html = render_infinite_scroll_trigger(2, search, status, age, height)
+    elif total > 0:
+        sentinel_html = render_infinite_scroll_end(total)
+
+    return f"""<div class="plants-grid" id="plants-grid">{''.join(cards)}{sentinel_html}</div>"""
+
+
+def render_plants_page(
+    plants: List[Dict[str, Any]],
+    page: int,
+    page_size: int = PAGE_SIZE,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    age: Optional[str] = None,
+    height: Optional[str] = None,
+) -> str:
+    """Renders subsequent batch of cards for infinite scroll (swapped via outerHTML)."""
+    total = len(plants)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_plants = plants[start:end]
+
+    cards = [render_card_html(p) for p in page_plants]
+
+    if total > end:
+        sentinel = render_infinite_scroll_trigger(page + 1, search, status, age, height)
+    else:
+        sentinel = render_infinite_scroll_end(total)
+
+    return "".join(cards) + sentinel
 
 
 def render_stats_bar() -> str:
@@ -179,7 +282,7 @@ def render_stats_bar() -> str:
         </div>
         <div style="display: flex; gap: 14px; font-size: 11.5px; font-weight: 600;">
             <span style="color: var(--green-sage);">● OK: {ok_count}</span>
-            <span style="color: var(--peach-orange);">● notOK: {not_ok_count}</span>
+            <span style="color: #ef4444; font-weight: bold;">● notOK: {not_ok_count}</span>
         </div>
     </div>
     """

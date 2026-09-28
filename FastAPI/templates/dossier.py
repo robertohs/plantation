@@ -22,8 +22,12 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         for ph in photos:
             items.append(f'''
             <div class="dossier-photo-card">
-                <img src="/images/{ph}" alt="{plant.get('name')}" class="dossier-photo-img" />
-                <div class="dossier-photo-cap">{ph}</div>
+                <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
+                    <img src="/images/{ph}" alt="{plant.get('name')}" class="dossier-photo-img" style="cursor: pointer;" />
+                </a>
+                <div class="dossier-photo-cap">
+                    <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph}</a>
+                </div>
             </div>
             ''')
         photos_html = f'''

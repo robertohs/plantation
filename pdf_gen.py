@@ -22,7 +22,7 @@ CLR_PEACH = (194, 65, 12)        # Terracotta / Peach accent for Alias
 CLR_OK_BG = (220, 252, 231)      # Soft green badge
 CLR_OK_TXT = (22, 101, 52)
 CLR_NOTOK_BG = (254, 226, 226)   # Soft red badge
-CLR_NOTOK_TXT = (153, 27, 27)
+CLR_NOTOK_TXT = (220, 38, 38)     # Bright crimson red text
 
 
 def safe_text(val) -> str:
@@ -544,99 +544,5 @@ def generate_catalog_pdf(plants: list, title: str = "CATÁLOGO GENERAL DE EJEMPL
         pdf.set_draw_color(*CLR_BORDER)
         pdf.set_line_width(0.15)
         pdf.line(15, pdf.get_y(), pdf.w - 15, pdf.get_y())
-
-    pdf.ln(8)
-
-    # Detailed Specimen Cards Section (2 per page)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.set_text_color(*CLR_PRIMARY)
-    pdf.cell(0, 6, safe_text("FICHAS TÉCNICAS DETALLADAS"), border=0, ln=1)
-
-    for plant in plants:
-        # Check if enough space for a card (58mm), else new page
-        if pdf.get_y() > pdf.h - 68:
-            pdf.add_page()
-
-        card_start_y = pdf.get_y()
-        card_h = 54
-        pdf.set_fill_color(255, 255, 255)
-        pdf.set_draw_color(*CLR_BORDER)
-        pdf.set_line_width(0.3)
-        pdf.rect(15, card_start_y, pdf.w - 30, card_h, style="FD")
-
-        # Top banner within card
-        pdf.set_fill_color(*CLR_PRIMARY_LIGHT)
-        pdf.rect(15, card_start_y, pdf.w - 30, 8, style="F")
-
-        p_name = safe_text(plant.get("name", "N/A"))
-        p_aka = safe_text(plant.get("aka", ""))
-        p_species = safe_text(plant.get("species", "Sin especie registrada"))
-        p_status = plant.get("status", "OK")
-
-        pdf.set_xy(18, card_start_y + 1.5)
-        pdf.set_font("Helvetica", "B", 10)
-        pdf.set_text_color(*CLR_PRIMARY)
-        pdf.cell(30, 5, f"[{p_name}]", border=0, ln=0)
-
-        if p_aka:
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.set_text_color(*CLR_PEACH)
-            pdf.cell(45, 5, f'"{p_aka}"', border=0, ln=0)
-
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.set_text_color(*CLR_DARK)
-        pdf.cell(65, 5, p_species[:40], border=0, ln=0)
-
-        pdf.draw_status_badge(pdf.w - 38, card_start_y + 1.2, p_status, w=20, h=5.5)
-
-        # Card body: Thumbnail left (38mm), details right
-        thumb_path = get_first_valid_image(plant)
-        thumb_x = 18
-        thumb_y = card_start_y + 11
-        thumb_w = 34
-        thumb_h = 38
-
-        if thumb_path:
-            try:
-                pdf.image(thumb_path, x=thumb_x, y=thumb_y, w=thumb_w, h=thumb_h)
-            except Exception:
-                thumb_path = None
-
-        if not thumb_path:
-            pdf.set_fill_color(*CLR_ROW_ALT)
-            pdf.rect(thumb_x, thumb_y, thumb_w, thumb_h, style="F")
-            pdf.set_xy(thumb_x, thumb_y + 16)
-            pdf.set_font("Helvetica", "I", 6.5)
-            pdf.set_text_color(*CLR_MUTED)
-            pdf.cell(thumb_w, 4, safe_text("Sin foto"), border=0, align="C")
-
-        # Details on right
-        dt_x = thumb_x + thumb_w + 4
-        dt_w = pdf.w - 30 - thumb_w - 10
-        dt_y = thumb_y
-
-        fields = [
-            ("Ubicación", safe_text(plant.get("location") or "Sin registrar")),
-            ("Altura (Fecha - CM)", safe_text(plant.get("height") or "—")),
-            ("Fecha Siembra / Esqueje", safe_text(plant.get("sowing_cutting_date") or "—")),
-            ("Edad", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date")))),
-            ("Injerto", safe_text(plant.get("graft") or "—")),
-            ("Linaje (Padres)", safe_text(plant.get("padres") or "—")),
-            ("Última Poda", safe_text(plant.get("last_pruned") or "—")),
-            ("Último Trasplante", safe_text(plant.get("last_repotted") or "—")),
-        ]
-
-        row_h_card = 4.4
-        for j, (lbl, val) in enumerate(fields):
-            pdf.set_xy(dt_x, dt_y + (j * row_h_card))
-            pdf.set_font("Helvetica", "B", 7)
-            pdf.set_text_color(*CLR_MUTED)
-            pdf.cell(38, row_h_card, safe_text(lbl), border=0, ln=0)
-
-            pdf.set_font("Helvetica", "", 7)
-            pdf.set_text_color(*CLR_DARK)
-            pdf.cell(dt_w - 38, row_h_card, safe_text(val), border=0, ln=1)
-
-        pdf.set_y(card_start_y + card_h + 5)
 
     return bytes(pdf.output())

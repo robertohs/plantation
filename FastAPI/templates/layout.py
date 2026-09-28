@@ -3,12 +3,11 @@ Plantation - Application Shell & Main Layout Template
 """
 
 from typing import List, Dict, Any
-from .components import render_plants_grid, render_stats_bar
+from .components import render_plants_grid
 
 
 def render_index_html(plants: List[Dict[str, Any]]) -> str:
     """Renders the main page HTML layout."""
-    stats_bar_html = render_stats_bar()
     grid_html = render_plants_grid(plants)
 
     return f"""<!DOCTYPE html>
@@ -203,14 +202,36 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             </div>
         </div>
 
-        {stats_bar_html}
-
         <div id="plant-container">
             {grid_html}
         </div>
     </main>
 
     <div id="modal-container"></div>
+
+    <!-- In-App Confirmation Modal (Safe for iframes, no window.confirm blocker) -->
+    <div id="app-confirm-modal" class="modal-overlay" style="display: none; z-index: 100050;">
+        <div class="modal-dialog" style="max-width: 440px; border-color: #ef4444; box-shadow: 0 10px 40px rgba(0,0,0,0.85);">
+            <div class="modal-header" style="border-bottom-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.1);">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: bold; color: #ef4444; font-size: 13px;">
+                    <span>⚠️</span>
+                    <span>CONFIRMACIÓN REQUERIDA</span>
+                </div>
+                <button type="button" class="modal-close-btn" onclick="closeAppConfirmModal()" title="Cancelar acción">✕</button>
+            </div>
+            <div class="modal-body" style="padding: 18px 20px; font-size: 13px; color: var(--text-main); line-height: 1.5;">
+                <p id="app-confirm-text" style="margin: 0 0 16px 0; word-break: break-word;"></p>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px;">
+                    <button type="button" class="btn" onclick="closeAppConfirmModal()">
+                        CANCELAR
+                    </button>
+                    <button type="button" class="btn btn-red" id="app-confirm-btn" style="background-color: #ef4444; border-color: #ef4444; color: #fff;">
+                        SÍ, CONFIRMAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <footer class="cli-footer">
         <div>
@@ -351,6 +372,65 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             clearTimeout(_searchDebounceTimer);
             _searchDebounceTimer = setTimeout(executePlantFilter, 160);
         }}
+
+        var _appConfirmCallback = null;
+
+        function showAppConfirmModal(message, onConfirm) {{
+            _appConfirmCallback = onConfirm;
+            var modal = document.getElementById('app-confirm-modal');
+            var textEl = document.getElementById('app-confirm-text');
+            var okBtn = document.getElementById('app-confirm-btn');
+            if (!modal || !textEl || !okBtn) {{
+                if (onConfirm) onConfirm();
+                return;
+            }}
+            textEl.textContent = message;
+            modal.style.display = 'flex';
+            okBtn.focus();
+        }}
+
+        function closeAppConfirmModal() {{
+            var modal = document.getElementById('app-confirm-modal');
+            if (modal) modal.style.display = 'none';
+            _appConfirmCallback = null;
+        }}
+
+        document.addEventListener('DOMContentLoaded', function() {{
+            var okBtn = document.getElementById('app-confirm-btn');
+            if (okBtn) {{
+                okBtn.addEventListener('click', function(e) {{
+                    e.stopPropagation();
+                    var cb = _appConfirmCallback;
+                    closeAppConfirmModal();
+                    if (cb) cb();
+                }});
+            }}
+
+            var modal = document.getElementById('app-confirm-modal');
+            if (modal) {{
+                modal.addEventListener('click', function(e) {{
+                    if (e.target === modal) {{
+                        closeAppConfirmModal();
+                    }}
+                }});
+            }}
+        }});
+
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape') {{
+                closeAppConfirmModal();
+            }}
+        }});
+
+        // Intercept all HTMX requests requiring confirmation
+        document.addEventListener('htmx:confirm', function(evt) {{
+            if (evt.detail && evt.detail.question) {{
+                evt.preventDefault();
+                showAppConfirmModal(evt.detail.question, function() {{
+                    evt.detail.issueRequest(true);
+                }});
+            }}
+        }});
     </script>
 </body>
 </html>"""

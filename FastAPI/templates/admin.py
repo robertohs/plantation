@@ -62,7 +62,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                             hx-delete="/plants/{p.get('name')}"
                             hx-target="#plant-container"
                             hx-swap="innerHTML"
-                            hx-confirm="¿Eliminar {p.get('name')} y sus fotos del disco?">
+                            hx-confirm="¿Eliminar definitivamente el ejemplar '{p.get('name')}' y todas sus fotos del disco?">
                         ELIMINAR
                     </button>
                 </td>
@@ -102,8 +102,8 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                 <div class="inventory-stat-lbl">SALUDABLES (● OK)</div>
             </div>
             <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--peach-orange);">{sc.get('notOK', 0)}</div>
-                <div class="inventory-stat-lbl">ENFERMOS / CUARENTENA</div>
+                <div class="inventory-stat-val" style="color: #ef4444;">{sc.get('notOK', 0)}</div>
+                <div class="inventory-stat-lbl" style="color: #ef4444;">ENFERMOS / CUARENTENA (● notOK)</div>
             </div>
             <div class="inventory-stat-card">
                 <div class="inventory-stat-val" style="color: var(--blue-sky);">{inv['with_photos']} <span style="font-size: 12px; color: var(--text-dim);">({inv['total_photos']} fotos)</span></div>

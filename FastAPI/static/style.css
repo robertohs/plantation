@@ -399,13 +399,16 @@ body {
   color: #111;
 }
 
-.status-pill-notok {
-  border-color: #5c3a28;
-  color: var(--peach-orange);
+.status-pill-notok,
+[data-theme] .status-pill-notok {
+  border-color: #ef4444 !important;
+  color: #f87171 !important;
 }
-.status-pill-notok.active {
-  background-color: var(--peach-orange);
-  color: #111;
+.status-pill-notok.active,
+[data-theme] .status-pill-notok.active {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
 }
 
 .status-pill-age {
@@ -473,17 +476,33 @@ body {
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
+.card-head,
 .plant-card-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 8px;
   border-bottom: 1px dashed var(--border-dim);
   padding-bottom: 8px;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+}
+
+.card-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.infinite-scroll-trigger,
+.infinite-scroll-end {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
 .plant-key-box {
@@ -533,10 +552,19 @@ body {
 .status-notOK,
 .status-Diseaced,
 .status-Disease,
-.status-Extremely-Ill {
-  background-color: var(--peach-dark);
-  border-color: var(--peach-orange);
-  color: var(--peach-orange);
+.status-Extremely-Ill,
+[data-theme] .status-notOK,
+[data-theme] .status-Diseaced,
+[data-theme] .status-Disease,
+[data-theme] .status-Extremely-Ill {
+  background-color: #3b1419 !important;
+  border-color: #ef4444 !important;
+  color: #f87171 !important;
+}
+
+.status-notOK *,
+[data-theme] .status-notOK * {
+  color: #f87171 !important;
 }
 
 .plant-aka {
@@ -1058,6 +1086,13 @@ body {
   height: 95px;
   object-fit: cover;
   border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.modal-photo-thumb:hover {
+  filter: brightness(1.15);
+  transform: scale(1.02);
 }
 
 .photo-delete-badge {
