@@ -140,6 +140,105 @@
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
 
+[data-theme="green olive"],
+[data-theme="green-olive"] {
+  --bg-base: #141913;
+  --bg-mantle: #1a2219;
+  --bg-crust: #0d120c;
+  --bg-surface: #222e20;
+  --bg-surface-hover: #2d3b2b;
+  --bg-overlay: #394a37;
+  
+  --border-dim: #384935;
+  --border-active: #5f7a5b;
+  --border-red: #98b33b;
+  
+  --text-main: #eff5ed;
+  --text-sub: #bed0ba;
+  --text-dim: #799074;
+  
+  --red-crimson: #98b33b;
+  --red-dark: #273010;
+  --red-border: #b1d145;
+  
+  --green-sage: #7fb865;
+  --green-dark: #192b15;
+  
+  --blue-sky: #6fa69c;
+  --blue-dark: #152c28;
+  
+  --peach-orange: #d1a84f;
+  --peach-dark: #382c0f;
+
+  --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
+[data-theme="adenium power"],
+[data-theme="adenium-power"] {
+  --bg-base: #17121a;
+  --bg-mantle: #1e1722;
+  --bg-crust: #100b12;
+  --bg-surface: #281d2f;
+  --bg-surface-hover: #35263d;
+  --bg-overlay: #463250;
+  
+  --border-dim: #442a4d;
+  --border-active: #78448a;
+  --border-red: #ff2a85;
+  
+  --text-main: #fdefef;
+  --text-sub: #dfbed3;
+  --text-dim: #996e8d;
+  
+  --red-crimson: #ff2a85;
+  --red-dark: #3a061d;
+  --red-border: #ff5eaa;
+  
+  --green-sage: #45e08b;
+  --green-dark: #0d2b1a;
+  
+  --blue-sky: #c078f4;
+  --blue-dark: #281239;
+  
+  --peach-orange: #ff7557;
+  --peach-dark: #38150a;
+
+  --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
+[data-theme="unicorn lover pro max"],
+[data-theme="unicorn-lover-pro-max"] {
+  --bg-base: #131124;
+  --bg-mantle: #1a1733;
+  --bg-crust: #0c0a1a;
+  --bg-surface: #242045;
+  --bg-surface-hover: #312b5d;
+  --bg-overlay: #433a7d;
+  
+  --border-dim: #453775;
+  --border-active: #8266d6;
+  --border-red: #ff66cc;
+  
+  --text-main: #fbf7ff;
+  --text-sub: #d7ccfa;
+  --text-dim: #8e7dbd;
+  
+  --red-crimson: #ff66cc;
+  --red-dark: #380e2e;
+  --red-border: #ff99e6;
+  
+  --green-sage: #56fdbe;
+  --green-dark: #0a3826;
+  
+  --blue-sky: #58ddf5;
+  --blue-dark: #0e2b36;
+  
+  --peach-orange: #ffd166;
+  --peach-dark: #3b2d07;
+
+  --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

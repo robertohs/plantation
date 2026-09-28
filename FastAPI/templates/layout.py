@@ -59,8 +59,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                         onclick="toggleThemeDropdown(event)"
                         aria-haspopup="true"
                         aria-expanded="false"
-                        title="Cambiar esquema de color de la interfaz">
-                    🎨 <span id="theme-btn-label">[TEMA: CATPPUCCIN]</span> <span style="font-size: 9px; opacity: 0.8; margin-left: 2px;">▼</span>
+                        title="Esquema de color">
+                    <span id="theme-btn-icon" style="font-size: 15px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">🌸</span>
                 </button>
                 <div id="theme-dropdown-menu" class="theme-dropdown-menu" style="display: none;">
                     <div class="theme-dropdown-header">ESQUEMA DE COLOR // PALETA</div>
@@ -69,7 +69,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             <span class="theme-swatch-dot" style="background: #38bdf8; box-shadow: 0 0 6px #38bdf8;"></span>
                         </span>
                         <span class="theme-info">
-                            <span class="theme-name">Japanese Indigo</span>
+                            <span class="theme-name">🌊 Japanese Indigo</span>
                             <span class="theme-desc">藍染 Aizome · Índigo & cielo</span>
                         </span>
                         <span class="theme-check">✓</span>
@@ -79,7 +79,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             <span class="theme-swatch-dot" style="background: #ed8796; box-shadow: 0 0 6px #ed8796;"></span>
                         </span>
                         <span class="theme-info">
-                            <span class="theme-name">Catppuccin</span>
+                            <span class="theme-name">🌸 Catppuccin</span>
                             <span class="theme-desc">Mocha & Carmesí original</span>
                         </span>
                         <span class="theme-check">✓</span>
@@ -89,7 +89,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             <span class="theme-swatch-dot" style="background: #f1b343; box-shadow: 0 0 6px #f1b343;"></span>
                         </span>
                         <span class="theme-info">
-                            <span class="theme-name">Golden</span>
+                            <span class="theme-name">🏺 Golden</span>
                             <span class="theme-desc">Kintsugi · Oro & ámbar</span>
                         </span>
                         <span class="theme-check">✓</span>
@@ -99,8 +99,38 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             <span class="theme-swatch-dot" style="background: #ff334b; box-shadow: 0 0 6px #ff334b;"></span>
                         </span>
                         <span class="theme-info">
-                            <span class="theme-name">Darker Than Black</span>
+                            <span class="theme-name">🌑 Darker Than Black</span>
                             <span class="theme-desc">OLED Noir · Negro & neón</span>
+                        </span>
+                        <span class="theme-check">✓</span>
+                    </button>
+                    <button type="button" class="theme-option-btn" data-theme-name="green olive" onclick="selectTheme('green olive')">
+                        <span class="theme-swatch" style="background: #141913; border-color: #98b33b;">
+                            <span class="theme-swatch-dot" style="background: #98b33b; box-shadow: 0 0 6px #98b33b;"></span>
+                        </span>
+                        <span class="theme-info">
+                            <span class="theme-name">🫒 Green Olive</span>
+                            <span class="theme-desc">Aceituna · Verde oliva, salvia y bosque</span>
+                        </span>
+                        <span class="theme-check">✓</span>
+                    </button>
+                    <button type="button" class="theme-option-btn" data-theme-name="adenium power" onclick="selectTheme('adenium power')">
+                        <span class="theme-swatch" style="background: #17121a; border-color: #ff2a85;">
+                            <span class="theme-swatch-dot" style="background: #ff2a85; box-shadow: 0 0 6px #ff2a85;"></span>
+                        </span>
+                        <span class="theme-info">
+                            <span class="theme-name">🌺 Adenium Power</span>
+                            <span class="theme-desc">Desert Rose · Fucsia Adenium & carbón</span>
+                        </span>
+                        <span class="theme-check">✓</span>
+                    </button>
+                    <button type="button" class="theme-option-btn" data-theme-name="unicorn lover pro max" onclick="selectTheme('unicorn lover pro max')">
+                        <span class="theme-swatch" style="background: #131124; border-color: #ff66cc;">
+                            <span class="theme-swatch-dot" style="background: #58ddf5; box-shadow: 0 0 6px #ff66cc;"></span>
+                        </span>
+                        <span class="theme-info">
+                            <span class="theme-name">🦄 Unicorn Lover Pro Max</span>
+                            <span class="theme-desc">Pastel Synthwave · Lavanda, turquesa & neón</span>
                         </span>
                         <span class="theme-check">✓</span>
                     </button>
@@ -243,14 +273,36 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     </footer>
 
     <script>
-        var THEME_LABELS = {{
-            'japanese indigo': 'JAPANESE INDIGO',
-            'japanese-indigo': 'JAPANESE INDIGO',
-            'catpuchin': 'CATPPUCCIN',
-            'catppuccin': 'CATPPUCCIN',
-            'golden': 'GOLDEN',
-            'darkerthanblack': 'DARKER THAN BLACK',
-            'darker-than-black': 'DARKER THAN BLACK'
+        var THEME_ICONS = {{
+            'japanese indigo': '🌊',
+            'japanese-indigo': '🌊',
+            'catpuchin': '🌸',
+            'catppuccin': '🌸',
+            'golden': '🏺',
+            'darkerthanblack': '🌑',
+            'darker-than-black': '🌑',
+            'green olive': '🫒',
+            'green-olive': '🫒',
+            'adenium power': '🌺',
+            'adenium-power': '🌺',
+            'unicorn lover pro max': '🦄',
+            'unicorn-lover-pro-max': '🦄'
+        }};
+
+        var THEME_NAMES = {{
+            'japanese indigo': 'Japanese Indigo',
+            'japanese-indigo': 'Japanese Indigo',
+            'catpuchin': 'Catppuccin',
+            'catppuccin': 'Catppuccin',
+            'golden': 'Golden',
+            'darkerthanblack': 'Darker Than Black',
+            'darker-than-black': 'Darker Than Black',
+            'green olive': 'Green Olive',
+            'green-olive': 'Green Olive',
+            'adenium power': 'Adenium Power',
+            'adenium-power': 'Adenium Power',
+            'unicorn lover pro max': 'Unicorn Lover Pro Max',
+            'unicorn-lover-pro-max': 'Unicorn Lover Pro Max'
         }};
 
         function selectTheme(themeName) {{
@@ -263,14 +315,24 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
         function applyTheme(themeName) {{
             document.documentElement.setAttribute('data-theme', themeName);
-            var labelEl = document.getElementById('theme-btn-label');
-            if (labelEl) {{
-                var clean = THEME_LABELS[themeName] || themeName.toUpperCase();
-                labelEl.textContent = '[TEMA: ' + clean + ']';
+            var iconEl = document.getElementById('theme-btn-icon');
+            var btnEl = document.getElementById('theme-toggle-btn');
+            var icon = THEME_ICONS[themeName] || '🎨';
+            var name = THEME_NAMES[themeName] || themeName;
+            if (iconEl) {{
+                iconEl.textContent = icon;
+            }}
+            if (btnEl) {{
+                btnEl.setAttribute('title', 'Esquema de color: ' + name);
+                btnEl.setAttribute('aria-label', 'Esquema de color: ' + name);
             }}
             document.querySelectorAll('.theme-option-btn').forEach(function(btn) {{
                 var t = btn.getAttribute('data-theme-name');
-                if (t === themeName || (themeName === 'catppuccin' && t === 'catpuchin')) {{
+                if (t === themeName || 
+                    (themeName === 'catppuccin' && t === 'catpuchin') ||
+                    (themeName === 'green-olive' && t === 'green olive') ||
+                    (themeName === 'adenium-power' && t === 'adenium power') ||
+                    (themeName === 'unicorn-lover-pro-max' && t === 'unicorn lover pro max')) {{
                     btn.classList.add('active');
                 }} else {{
                     btn.classList.remove('active');

@@ -178,6 +178,12 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
     </style>
 </head>
 <body data-theme="catpuchin">
+    <script>
+        try {{
+            var t = localStorage.getItem('plantation_theme') || 'catpuchin';
+            document.body.setAttribute('data-theme', t);
+        }} catch(e) {{}}
+    </script>
     <div class="dossier-container">
         <div class="dossier-topbar">
             <div>

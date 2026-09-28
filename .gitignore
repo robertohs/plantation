@@ -91,6 +91,8 @@ coverage/
 *.db-journal
 *.db-wal
 *.db-shm
+DB/
+*.db
 
 # ==============================================================================
 # Operating System & IDEs
@@ -121,8 +123,3 @@ ehthumbs_vista.db
 *.bak
 tmp/
 temp/
-
-
-
-DB
-db
