@@ -294,11 +294,11 @@ def index_view(request: Request):
             <!-- Controls & Filters Toolbar -->
             <div class="control-toolbar">
                 <div class="search-line">
-                    <span class="input-prompt">query&gt;</span>
+                    <span class="input-prompt">Buscar&gt;</span>
                     <input type="text"
                            id="search-input"
                            class="search-input"
-                           placeholder="Búsqueda por Clave (ej. A2, 900), Alias (ej. ocaso, darkRed), Especie, Ubicación..."
+                           placeholder="..."
                            oninput="onSearchFilterInput(this.value)"
                            autocomplete="off" />
                     <span id="search-spinner" class="htmx-indicator" style="color: var(--red-crimson); font-size: 11px;">[BUSCANDO...]</span>

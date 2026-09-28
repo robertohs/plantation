@@ -56,8 +56,9 @@ def init_db() -> None:
             pass
 
         # Migrate all existing statuses to the 2 requested states: OK (green) or notOK (orange)
-        conn.execute("UPDATE plants SET status = 'OK' WHERE status IN ('Ok', 'Triving', 'OK', 'Saludable', 'Próspero');")
+        conn.execute("UPDATE plants SET status = 'OK' WHERE status IN ('Ok', 'ok');")
         conn.execute("UPDATE plants SET status = 'notOK' WHERE status NOT IN ('OK');")
+
 
         # Set sample AKAs for grafted plants if empty
         conn.execute("UPDATE plants SET aka = 'ocaso' WHERE name = 'A2' AND (aka IS NULL OR aka = '');")
@@ -78,7 +79,7 @@ def normalize_status(val: Optional[str]) -> str:
     if not val:
         return "OK"
     s = str(val).strip().lower()
-    if s in ("ok", "triving", "saludable", "prospero", "próspero", "healthy", "good", "bien"):
+    if s in ("ok"):
         return "OK"
     return "notOK"
 
@@ -120,6 +121,8 @@ def calculate_plant_age(
     graft: Optional[str] = "",
     now: Optional[datetime] = None
 ) -> Tuple[str, str]:
+
+
     """Calculates plant age where age 0 is when the plant was grafted or sowed.
 
     Returns a tuple of (short_display, detailed_display):
@@ -192,7 +195,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
         d["aka"] = ""
     # Ensure status is normalized to 2-state OK or notOK
     if d.get("status") not in ("OK", "notOK"):
-        d["status"] = "OK" if d.get("status") in ("Ok", "Triving", "Saludable", "Próspero") else "notOK"
+        d["status"] = "OK" if d.get("status") in ("Ok") else "notOK"
 
     if "photos" in d:
         try:
@@ -214,16 +217,6 @@ def get_plants(
     with get_connection() as conn:
         query = "SELECT * FROM plants WHERE 1=1"
         params: List[Any] = []
-
-        # Robust 2-state status filtering (OK vs notOK)
-        if status_filter:
-            s_clean = status_filter.strip().lower()
-            if s_clean in ("all", "", "none", "null", "undefined", "*"):
-                pass  # Show all statuses
-            elif s_clean in ("ok", "triving", "saludable", "prospero", "próspero"):
-                query += " AND (status = 'OK' OR LOWER(status) IN ('ok', 'triving', 'saludable', 'prospero', 'próspero'))"
-            elif s_clean in ("notok", "not_ok", "not ok", "disease", "diseaced", "ill", "extremely ill", "enfermo"):
-                query += " AND (status = 'notOK' OR LOWER(status) NOT IN ('ok', 'triving', 'saludable', 'prospero', 'próspero'))"
 
         if search_query and search_query.strip():
             sq = f"%{search_query.strip()}%"
@@ -297,7 +290,7 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "La especie botánica o nombre común es obligatoria."
 
     raw_status = (data.get("status") or "OK").strip()
-    status = "OK" if raw_status in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
+    status = "OK" if raw_status in ("OK", "Ok") else "notOK"
 
     aka = (data.get("aka") or "").strip()
 
@@ -358,7 +351,7 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
         return False, "La especie botánica o nombre común es obligatoria."
 
     raw_status = (data.get("status") or "OK").strip()
-    status = "OK" if raw_status in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
+    status = "OK" if raw_status in ("OK", "Ok") else "notOK"
 
     aka = (data.get("aka") or "").strip()
 
@@ -601,7 +594,7 @@ def seed_default_data() -> None:
                 "last_repotted": "2025-02-18 (Sustrato mineral 80% pómice)",
                 "fertilizante": "2025-06-01 NPK 4-10-15 dilución 25% + Quelato de Hierro",
                 "photos": ["A1_1.webp", "A1_2.webp"],
-                "status": "Triving",
+                "status": "OK",
                 "comentarios": "Floración rosa magenta observada en otoño. Crecimiento lento pero saludable con tubérculos bien definidos."
             },
             {
@@ -631,7 +624,7 @@ def seed_default_data() -> None:
                 "last_repotted": "2024-11-20 (Trasplante de patrón)",
                 "fertilizante": "2025-07-20 Fertilizante cactus bajo en nitrógeno",
                 "photos": ["A2_1.webp"],
-                "status": "Triving",
+                "status": "OK",
                 "comentarios": "Cruce experimental exitoso entre A1 y 900. Velocidad de desarrollo acelerada gracias al injerto vigoroso."
             },
             {
@@ -646,7 +639,7 @@ def seed_default_data() -> None:
                 "last_repotted": "2025-01-14 (Sustrato esterilizado)",
                 "fertilizante": "Sin fertilizante reciente (Bajo tratamiento fúngico)",
                 "photos": ["B12_1.webp"],
-                "status": "Diseaced",
+                "status": "OK",
                 "comentarios": "Mancha marrón sospechosa en la costilla apical 3. Tratado con oxicloruro de cobre preventivo en cuarentena."
             },
             {
@@ -661,7 +654,7 @@ def seed_default_data() -> None:
                 "last_repotted": "2024-03-30 (Maceta profunda de gres)",
                 "fertilizante": "2025-04-10 Microelementos y Calcio quelatado",
                 "photos": ["K7_1.webp"],
-                "status": "Ok",
+                "status": "OK",
                 "comentarios": "Follaje ondulado invernal en desarrollo. Orientación apical hacia el norte respetada."
             },
             {
@@ -676,7 +669,7 @@ def seed_default_data() -> None:
                 "last_repotted": "2025-08-02",
                 "fertilizante": "Ninguno",
                 "photos": [],
-                "status": "Extremely Ill",
+                "status": "OK",
                 "comentarios": "Pudrición bacteriana avanzada en la unión del injerto. Aislado para intento de rescate de meristemo superior."
             }
         ]
@@ -685,7 +678,7 @@ def seed_default_data() -> None:
         for p in initial_plants:
             aka_val = p.get("aka", "")
             raw_st = p.get("status", "OK")
-            st_val = "OK" if raw_st in ("OK", "Ok", "Triving", "Saludable", "Próspero") else "notOK"
+            st_val = "OK" if raw_st in ("OK", "Ok") else "notOK"
             conn.execute("""
                 INSERT INTO plants (
                     name, species, aka, location, registration_date, padres,
