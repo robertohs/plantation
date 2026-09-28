@@ -552,37 +552,102 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Card Visual Thumbnail Box */
-.card-thumbnail-box {
+/* Card Visual Thumbnail Box & Plant Thumb */
+.card-thumbnail-box,
+.plant-thumb-wrapper {
   width: 100%;
-  height: 170px;
+  height: 180px;
+  min-height: 180px;
+  max-height: 180px;
   background-color: var(--bg-crust);
   border: 1px solid var(--border-dim);
-  border-radius: 3px;
+  border-radius: 4px;
   overflow: hidden;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 6px 0 10px 0;
+  box-sizing: border-box;
 }
 
-.card-thumbnail-img {
+.plant-card:hover .card-thumbnail-box,
+.plant-card:hover .plant-thumb-wrapper {
+  border-color: var(--border-active);
+}
+
+.card-thumbnail-img,
+.plant-thumb {
   width: 100%;
   height: 100%;
+  min-height: 100%;
+  max-height: 100%;
   object-fit: cover;
+  object-position: center;
   display: block;
+  transition: transform 0.25s ease;
 }
 
-.thumbnail-badge-count {
+.plant-card:hover .card-thumbnail-img,
+.plant-card:hover .plant-thumb {
+  transform: scale(1.03);
+}
+
+.thumbnail-badge-count,
+.photo-count-pill {
   position: absolute;
-  bottom: 6px;
-  right: 6px;
-  background: rgba(17, 17, 27, 0.85);
+  bottom: 8px;
+  right: 8px;
+  background: rgba(17, 17, 27, 0.88);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   border: 1px solid var(--border-dim);
   color: var(--text-main);
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.card-thumbnail-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 12px;
+  background: var(--bg-mantle);
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.placeholder-icon {
+  font-size: 26px;
+  line-height: 1;
+  margin-bottom: 6px;
+  opacity: 0.7;
+}
+
+.placeholder-text {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-sub);
+  font-family: var(--font-mono);
+}
+
+.placeholder-sub {
+  font-size: 9.5px;
+  color: var(--text-dim);
+  margin-top: 3px;
+  font-family: var(--font-mono);
 }
 
 /* Botanical specs list inside card */
@@ -667,7 +732,8 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 999;
-  padding: 20px;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .modal-dialog {
@@ -676,19 +742,23 @@ body {
   border-radius: 4px;
   width: 100%;
   max-width: 780px;
-  max-height: 90vh;
+  max-height: 92vh;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
   display: flex;
   flex-direction: column;
   position: relative;
   overflow: hidden;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
+.modal-dialog > form,
 .modal-form-wrapper {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100%;
-  max-height: 90vh;
   overflow: hidden;
 }
 
@@ -713,6 +783,8 @@ body {
   flex-shrink: 0;
   z-index: 25;
   box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .form-section-title {
@@ -744,6 +816,10 @@ body {
   font-size: 18px;
   cursor: pointer;
   font-family: var(--font-mono);
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-close-btn:hover {
@@ -757,6 +833,9 @@ body {
   gap: 16px;
   overflow-y: auto;
   flex: 1 1 auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Forms */
@@ -1199,10 +1278,29 @@ body {
   .plants-grid {
     grid-template-columns: 1fr;
   }
+  .modal-overlay {
+    padding: 8px;
+  }
+  .modal-dialog {
+    max-height: 96vh;
+    border-radius: 3px;
+  }
+  .modal-body {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+  .modal-header,
+  .modal-footer-sticky {
+    padding: 10px 14px;
+  }
   .form-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
   .form-group.full {
+    grid-column: span 1;
+  }
+  .form-section-title {
     grid-column: span 1;
   }
   .cli-header {
@@ -1213,6 +1311,23 @@ body {
   .nav-actions {
     width: 100%;
     justify-content: space-between;
+  }
+}
+
+@media (max-height: 720px) {
+  .modal-overlay {
+    padding: 6px;
+  }
+  .modal-dialog {
+    max-height: 98vh;
+  }
+  .modal-header,
+  .modal-footer-sticky {
+    padding: 8px 14px;
+  }
+  .modal-body {
+    padding: 10px 14px;
+    gap: 10px;
   }
 }
 

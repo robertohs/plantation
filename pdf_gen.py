@@ -1,522 +1,641 @@
 """
-Plantation - WeasyPrint PDF Dossier Generator
-Generates valid, printable PDF documents (PDF-1.4 standard)
-in dark mode aesthetic (Catppuccin Mocha/Macchiato with red accents)
-with Spanish titles, subtitles, technical botanical cards, and visual photo previews.
-Created only on demand when downloaded.
+High-performance, ink-friendly PDF generation for Plantation using fpdf2.
+Replaces all legacy HTML/WeasyPrint rendering with fast, vector-crisp PDF output.
 """
 
-import base64
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-import weasyprint
+from fpdf import FPDF
+from PIL import Image
+import db
 
-from img_conv import IMAGES_DIR
+IMAGES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Images")
 
-STATUS_COLORS = {
-    "OK": ("#a6da95", "#1e332a", "OK"),
-    "notOK": ("#f5a97f", "#3a2e28", "notOK"),
-    "Ok": ("#a6da95", "#1e332a", "OK"),
-    "Triving": ("#a6da95", "#1e332a", "OK"),
-    "Disease": ("#f5a97f", "#3a2e28", "notOK"),
-    "Diseaced": ("#f5a97f", "#3a2e28", "notOK"),
-    "Extremely Ill": ("#f5a97f", "#3a2e28", "notOK")
-}
+# Botanical ink-friendly palette
+CLR_PRIMARY = (26, 71, 42)      # Deep Forest Green
+CLR_PRIMARY_LIGHT = (240, 247, 241) # Very soft green tint
+CLR_DARK = (15, 23, 42)          # Slate Charcoal
+CLR_MUTED = (100, 116, 139)      # Slate Gray
+CLR_BORDER = (203, 213, 225)     # Light Slate Border
+CLR_ROW_ALT = (248, 250, 252)    # Subtle table alternate row
+CLR_PEACH = (194, 65, 12)        # Terracotta / Peach accent for Alias
+CLR_OK_BG = (220, 252, 231)      # Soft green badge
+CLR_OK_TXT = (22, 101, 52)
+CLR_NOTOK_BG = (254, 226, 226)   # Soft red badge
+CLR_NOTOK_TXT = (153, 27, 27)
 
 
-def get_image_data_uri(filename: str) -> Optional[str]:
-    """Reads an image from disk and converts it to a base64 data URI for WeasyPrint."""
-    if not filename:
-        return None
-    path = os.path.join(IMAGES_DIR, os.path.basename(filename))
-    if not os.path.exists(path) or not os.path.isfile(path):
-        return None
+def safe_text(val) -> str:
+    """Sanitize strings to ensure complete compatibility with core FPDF fonts."""
+    if val is None:
+        return ""
+    text = str(val).strip()
+    replacements = {
+        "—": "-", "–": "-", "―": "-", "“": '"', "”": '"', "‘": "'", "’": "'",
+        "•": "*", "…": "...", "→": "->", "←": "<-", "✓": "OK", "✕": "X",
+        "\u2014": "-", "\u2013": "-", "\u2012": "-", "\u2010": "-"
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    try:
+        text.encode("latin-1")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("latin-1", "replace").decode("latin-1")
 
-    ext = os.path.splitext(filename)[1].lower()
-    mime = "image/jpeg"
-    if ext in (".png",):
-        mime = "image/png"
-    elif ext in (".webp",):
-        mime = "image/webp"
-    elif ext in (".avif",):
-        mime = "image/avif"
+
+class BotanicalPDF(FPDF):
+    """Custom FPDF document with official botanical header, footer, and utility components."""
+
+    def __init__(self, title_text="EXPEDIENTE TÉCNICO BOTÁNICO", **kwargs):
+        super().__init__(format="A4", unit="mm", **kwargs)
+        self.doc_title = title_text
+        self.set_margins(15, 15, 15)
+        self.set_auto_page_break(auto=True, margin=15)
+        self.alias_nb_pages()
+
+    def normalize_text(self, text):
+        return super().normalize_text(safe_text(text))
+
+    def header(self):
+        # Top banner with botanical logo & title
+        self.set_font("Helvetica", "B", 10)
+        self.set_text_color(*CLR_PRIMARY)
+        self.cell(100, 6, safe_text("[ PLANTATION ] SISTEMA BOTÁNICO"), border=0, ln=0, align="L")
+        
+        self.set_font("Helvetica", "", 8)
+        self.set_text_color(*CLR_MUTED)
+        date_str = datetime.now().strftime("%d/%m/%Y %H:%M")
+        self.cell(0, 6, safe_text(f"Emitido: {date_str}"), border=0, ln=1, align="R")
+
+        self.set_draw_color(*CLR_PRIMARY)
+        self.set_line_width(0.6)
+        self.line(15, self.get_y(), self.w - 15, self.get_y())
+        self.ln(4)
+
+    def footer(self):
+        self.set_y(-12)
+        self.set_draw_color(*CLR_BORDER)
+        self.set_line_width(0.3)
+        self.line(15, self.get_y(), self.w - 15, self.get_y())
+        self.ln(2)
+
+        self.set_font("Helvetica", "B", 7)
+        self.set_text_color(*CLR_MUTED)
+        self.cell(100, 5, safe_text(f"EXPEDIENTE TÉCNICO - {self.doc_title.upper()}"), border=0, ln=0, align="L")
+
+        self.set_font("Helvetica", "", 7)
+        self.cell(0, 5, safe_text(f"Página {self.page_no()} de {{nb}}"), border=0, ln=1, align="R")
+
+    def draw_status_badge(self, x, y, status, w=22, h=6):
+        """Draw an ink-friendly health status badge (OK or notOK)."""
+        is_ok = (status or "").upper() == "OK"
+        bg_col = CLR_OK_BG if is_ok else CLR_NOTOK_BG
+        txt_col = CLR_OK_TXT if is_ok else CLR_NOTOK_TXT
+        label = "● OK" if is_ok else "● notOK"
+
+        self.set_fill_color(*bg_col)
+        self.set_draw_color(*txt_col)
+        self.set_line_width(0.2)
+        self.rect(x, y, w, h, style="FD")
+
+        self.set_xy(x, y)
+        self.set_font("Helvetica", "B", 8)
+        self.set_text_color(*txt_col)
+        self.cell(w, h, safe_text(label), border=0, align="C")
+
+
+def get_all_valid_images(plant: dict) -> list[str]:
+    """Retrieves all existing and valid image file paths registered for a plant."""
+    photos = plant.get("photos")
+    if not photos:
+        return []
+    if isinstance(photos, str):
+        import json
+        try:
+            photos = json.loads(photos)
+        except Exception:
+            photos = [photos]
+    valid_paths = []
+    if isinstance(photos, list):
+        for ph in photos:
+            if ph and isinstance(ph, str):
+                full_path = os.path.join(IMAGES_DIR, ph)
+                if os.path.exists(full_path) and os.path.getsize(full_path) > 0:
+                    valid_paths.append(full_path)
+    return valid_paths
+
+
+def get_first_valid_image(plant: dict) -> str | None:
+    """Find the path of the first existing photo for a plant."""
+    imgs = get_all_valid_images(plant)
+    return imgs[0] if imgs else None
+
+
+def draw_standardized_image_frame(pdf, img_path: str, x: float, y: float, w: float, h: float, caption: str = ""):
+    """Draws an image within a standard box frame maintaining original aspect ratio."""
+    # Outer frame
+    pdf.set_draw_color(*CLR_BORDER)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(x, y, w, h, style="FD")
+
+    caption_h = 7 if caption else 0
+    inner_w = w - 4
+    inner_h = h - caption_h - 4
 
     try:
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("utf-8")
-            return f"data:{mime};base64,{b64}"
+        with Image.open(img_path) as im:
+            orig_w, orig_h = im.size
+            ratio = orig_w / max(orig_h, 1)
+            target_ratio = inner_w / max(inner_h, 1)
+
+            if ratio >= target_ratio:
+                # Width constrained
+                draw_w = inner_w
+                draw_h = inner_w / ratio
+                draw_x = x + 2
+                draw_y = y + 2 + ((inner_h - draw_h) / 2)
+            else:
+                # Height constrained
+                draw_h = inner_h
+                draw_w = inner_h * ratio
+                draw_x = x + 2 + ((inner_w - draw_w) / 2)
+                draw_y = y + 2
+
+        pdf.image(img_path, x=draw_x, y=draw_y, w=draw_w, h=draw_h)
     except Exception:
-        return None
+        pdf.set_xy(x + 2, y + (h / 2) - 3)
+        pdf.set_font("Helvetica", "I", 7.5)
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(w - 4, 6, safe_text("Error al cargar imagen"), border=0, align="C")
+
+    # Caption bar at bottom of box
+    if caption:
+        pdf.set_xy(x, y + h - caption_h)
+        pdf.set_fill_color(*CLR_ROW_ALT)
+        pdf.rect(x, y + h - caption_h, w, caption_h, style="F")
+        pdf.set_xy(x + 2, y + h - caption_h)
+        pdf.set_font("Helvetica", "I", 7)
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(w - 4, caption_h, safe_text(caption), border=0, align="C")
 
 
-def get_pdf_css() -> str:
-    """CSS stylesheet for WeasyPrint conforming to Catppuccin dark mode with red accents."""
-    return """
-    @page {
-        size: A4;
-        margin: 1.5cm 1.2cm 1.8cm 1.2cm;
-        background-color: #181926;
-        @bottom-right {
-            content: "PÁG " counter(page) " / " counter(pages);
-            font-family: 'Maple Mono', 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 8pt;
-            color: #939ab7;
-        }
-        @bottom-left {
-            content: "PLANTATION // EXPEDIENTE ";
-            font-family: 'Maple Mono', 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 8pt;
-            color: #ed8796;
-        }
-    }
-
-    body {
-        background-color: #181926;
-        color: #cad3f5;
-        font-family: 'Maple Mono', 'JetBrains Mono', 'Courier New', monospace;
-        font-size: 9.5pt;
-        line-height: 1.45;
-        margin: 0;
-        padding: 0;
-    }
-
-    .header-banner {
-        border-bottom: 2px solid #ed8796;
-        padding-bottom: 12px;
-        margin-bottom: 20px;
-    }
-
-    .header-title-box {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-    }
-
-    .app-tag {
-        color: #ed8796;
-        font-size: 8pt;
-        font-weight: bold;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        margin-bottom: 4px;
-    }
-
-    .main-title {
-        color: #f4dbd6;
-        font-size: 18pt;
-        font-weight: 700;
-        margin: 0 0 4px 0;
-        letter-spacing: 1px;
-    }
-
-    .sub-title {
-        color: #a5adcb;
-        font-size: 9.5pt;
-        margin: 0;
-    }
-
-    .meta-box {
-        text-align: right;
-        font-size: 8pt;
-        color: #8087a2;
-    }
-
-    .card {
-        background-color: #24273a;
-        border: 1px solid #363a4f;
-        border-radius: 4px;
-        padding: 14px;
-        margin-bottom: 18px;
-        page-break-inside: avoid;
-    }
-
-    .card-header {
-        border-bottom: 1px dashed #494d64;
-        padding-bottom: 8px;
-        margin-bottom: 12px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .plant-key-badge {
-        font-size: 13pt;
-        font-weight: bold;
-        color: #ed8796;
-        letter-spacing: 1px;
-    }
-
-    .status-badge {
-        font-size: 8.5pt;
-        font-weight: bold;
-        padding: 3px 8px;
-        border-radius: 3px;
-        border: 1px solid;
-        text-transform: uppercase;
-    }
-
-    .species-name {
-        font-size: 12pt;
-        font-style: italic;
-        color: #8aadf4;
-        margin-top: 4px;
-        margin-bottom: 8px;
-    }
-
-    .grid-props {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px 16px;
-        margin-bottom: 12px;
-    }
-
-    .prop-item {
-        background-color: #1e2030;
-        border: 1px solid #363a4f;
-        padding: 6px 10px;
-        border-radius: 3px;
-    }
-
-    .prop-label {
-        font-size: 7.5pt;
-        color: #939ab7;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 2px;
-    }
-
-    .prop-value {
-        font-size: 9pt;
-        color: #cad3f5;
-        font-weight: 600;
-        word-break: break-word;
-    }
-
-    .prop-full {
-        grid-column: span 2;
-    }
-
-    .section-title {
-        font-size: 9pt;
-        font-weight: bold;
-        color: #ed8796;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin: 10px 0 6px 0;
-        border-left: 3px solid #ed8796;
-        padding-left: 6px;
-    }
-
-    .text-box {
-        background-color: #1e2030;
-        border: 1px solid #363a4f;
-        padding: 8px 10px;
-        font-size: 8.5pt;
-        color: #b8c0e0;
-        border-radius: 3px;
-        margin-bottom: 10px;
-        white-space: pre-wrap;
-    }
-
-    .photo-gallery {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 8px;
-    }
-
-    .photo-box {
-        width: 48%;
-        background-color: #181926;
-        border: 1px solid #494d64;
-        border-radius: 3px;
-        padding: 5px;
-        text-align: center;
-        page-break-inside: avoid;
-    }
-
-    .photo-img {
-        width: 100%;
-        height: 160px;
-        object-fit: cover;
-        border-radius: 2px;
-        display: block;
-    }
-
-    .photo-caption {
-        font-size: 7pt;
-        color: #939ab7;
-        margin-top: 4px;
-        font-family: monospace;
-    }
-
-    .vector-preview {
-        width: 100%;
-        height: 120px;
-        background-color: #1e2030;
-        border: 1px dashed #494d64;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        color: #8087a2;
-        font-size: 8pt;
-    }
-
-    /* Index Table */
-    table.index-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 15px;
-        margin-bottom: 25px;
-        font-size: 8pt;
-        page-break-inside: avoid;
-    }
-
-    table.index-table th {
-        background-color: #24273a;
-        color: #ed8796;
-        border: 1px solid #363a4f;
-        padding: 6px 8px;
-        text-align: left;
-        font-weight: bold;
-        text-transform: uppercase;
-    }
-
-    table.index-table td {
-        border: 1px solid #363a4f;
-        padding: 5px 8px;
-        color: #cad3f5;
-        background-color: #1e2030;
-    }
-
-    table.index-table tr:nth-child(even) td {
-        background-color: #24273a;
-    }
-
-    .page-break {
-        page-break-before: always;
-    }
+def generate_single_plant_pdf(plant: dict) -> bytes:
+    """Generate a single-plant technical dossier PDF using fpdf2.
+    Ensures:
+      1. General info (header, specifications, fertilization, observations) is ALWAYS on Page 1.
+      2. All photos are rendered in standardized frames at the bottom of the dossier,
+         fitting into Page 1 if possible, or gracefully expanding onto additional pages.
     """
+    pdf = BotanicalPDF(title_text=f"EJEMPLAR {plant.get('name', 'N/A')}")
+    pdf.add_page()
+
+    name = safe_text(plant.get("name", "N/A"))
+    aka = safe_text(plant.get("aka", ""))
+    species = safe_text(plant.get("species", "Sin especie registrada"))
+    status = plant.get("status", "OK")
+
+    box_w = pdf.w - 30  # 180mm printable width
+
+    # =========================================================================
+    # 1. HEADER CARD (Always on Page 1)
+    # =========================================================================
+    start_y = pdf.get_y()
+    pdf.set_fill_color(*CLR_PRIMARY_LIGHT)
+    pdf.set_draw_color(*CLR_PRIMARY)
+    pdf.set_line_width(0.4)
+    pdf.rect(15, start_y, box_w, 24, style="FD")
+
+    # Clave
+    pdf.set_xy(20, start_y + 3)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(50, 8, f"[{name}]", border=0, ln=0, align="L")
+
+    # Alias prominently next to clave
+    if aka:
+        pdf.set_xy(65, start_y + 4)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(*CLR_PEACH)
+        pdf.cell(75, 7, f'"{aka}"', border=0, ln=0, align="L")
+
+    # Status Badge top right
+    pdf.draw_status_badge(pdf.w - 45, start_y + 4, status, w=24, h=7)
+
+    # Species subheader
+    pdf.set_xy(20, start_y + 13)
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_text_color(*CLR_DARK)
+    pdf.cell(box_w - 10, 6, species, border=0, ln=1, align="L")
+
+    pdf.set_y(start_y + 27)
+
+    # =========================================================================
+    # 2. ESPECIFICACIONES  (Full-width 2-column grid, always on Page 1)
+    # =========================================================================
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(box_w, 5.5, safe_text("ESPECIFICACIONES"), border=0, ln=1)
+
+    col_w = (box_w - 4) / 2  # 88mm each
+    row_h = 5.8
+    specs_left = [
+        ("Clave", name),
+        ("Fecha Siembra / Esqueje", safe_text(plant.get("sowing_cutting_date") or "—")),
+        ("Edad Registrada", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date")))),
+        ("Injerto", safe_text(plant.get("graft") or "—")),
+        ("Linaje (Padres)", safe_text(plant.get("padres") or "—")),
+        ("Ubicación", safe_text(plant.get("location") or "Sin registrar")),
 
 
-def render_plant_card_html(p: Dict[str, Any]) -> str:
-    """Renders a single botanical dossier card in HTML for WeasyPrint."""
-    status = p.get("status", "Ok")
-    color, bg, es_status = STATUS_COLORS.get(status, ("#cad3f5", "#24273a", status))
 
-    photos = p.get("photos", [])
-    photo_html_items = []
+    ]
+    specs_right = [
+        ("Alias", aka or "—"),
+        ("Último Trasplante", safe_text(plant.get("last_repotted") or "—")),
+        ("Última Poda", safe_text(plant.get("last_pruned") or "—")),
 
-    for fn in photos:
-        uri = get_image_data_uri(fn)
-        if uri:
-            photo_html_items.append(f"""
-                <div class="photo-box">
-                    <img class="photo-img" src="{uri}" alt="{fn}" />
-                </div>
-            """)
+    ]
 
-    if not photo_html_items:
-        gallery_content = """
-            <div class="vector-preview">
-                <div>[DIAGRAMA BOTÁNICO VECTORIAL / SIN ARCHIVO FOTOGRÁFICO ADJUNTO]</div>
-                <div style="font-size: 7pt; color: #6e738d; margin-top: 4px;">EJEMPLAR REGISTRADO EN ARCHIVO DE PLANTATION</div>
-            </div>
-        """
+    table_y = pdf.get_y()
+    for i in range(max(len(specs_left), len(specs_right))):
+        cur_row_y = table_y + (i * row_h)
+
+        # Left Column Row
+        if i < len(specs_left):
+            lbl_l, val_l = specs_left[i]
+            if i % 2 == 1:
+                pdf.set_fill_color(*CLR_ROW_ALT)
+                pdf.rect(15, cur_row_y, col_w, row_h, style="F")
+            pdf.set_xy(15, cur_row_y)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*CLR_MUTED)
+            pdf.cell(40, row_h, safe_text(lbl_l), border=0, ln=0)
+
+            pdf.set_font("Helvetica", "B" if lbl_l == "Alias" and val_l != "—" else "", 8)
+            pdf.set_text_color(*(CLR_PEACH if lbl_l == "Alias" and val_l != "—" else CLR_DARK))
+            pdf.cell(col_w - 40, row_h, safe_text(val_l), border=0, ln=0)
+
+        # Right Column Row
+        if i < len(specs_right):
+            lbl_r, val_r = specs_right[i]
+            col2_x = 15 + col_w + 4
+            if i % 2 == 1:
+                pdf.set_fill_color(*CLR_ROW_ALT)
+                pdf.rect(col2_x, cur_row_y, col_w, row_h, style="F")
+            pdf.set_xy(col2_x, cur_row_y)
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*CLR_MUTED)
+            pdf.cell(38, row_h, safe_text(lbl_r), border=0, ln=0)
+
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(*CLR_DARK)
+            pdf.cell(col_w - 38, row_h, safe_text(val_r), border=0, ln=1)
+
+    pdf.set_y(table_y + (max(len(specs_left), len(specs_right)) * row_h) + 4)
+
+    # =========================================================================
+    # 3. FERTILIZACIÓN & TRATAMIENTOS (Always on Page 1)
+    # =========================================================================
+    fertilizante = safe_text(plant.get("fertilizante") or "").strip()
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(box_w, 5.5, safe_text("FERTILIZACIÓN & TRATAMIENTOS"), border=0, ln=1)
+
+    fert_lines = max(1, len(fertilizante.split("\n"))) if fertilizante else 1
+    fert_box_h = max(18, (fert_lines * 4.8) + 6)
+    fert_box_y = pdf.get_y()
+    pdf.set_draw_color(*CLR_BORDER)
+    pdf.set_fill_color(*CLR_ROW_ALT)
+    pdf.rect(15, fert_box_y, box_w, fert_box_h, style="FD")
+
+    pdf.set_xy(18, fert_box_y + 3)
+    pdf.set_font("Helvetica", "", 8.5)
+    if fertilizante:
+        pdf.set_text_color(*CLR_DARK)
+        pdf.multi_cell(box_w - 6, 4.6, fertilizante)
     else:
-        gallery_content = f"""<div class="photo-gallery">{''.join(photo_html_items)}</div>"""
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(box_w - 6, 6, safe_text("Sin tratamientos ni fertilización registrados para este ejemplar."), border=0)
 
-    aka_str = f'<span style="color: #f5a97f; font-weight: bold; margin-left: 6px; font-size: 8.5pt;">"{p.get("aka")}"</span>' if p.get('aka') else ""
+    pdf.set_y(fert_box_y + fert_box_h + 4)
 
-    return f"""
-    <div class="card">
-        <div class="card-header">
-            <div>
-                <span class="plant-key-badge">[ID: {p.get('name', 'N/A')}]</span>
-                {aka_str}
-            </div>
-            <div>
-                <span class="status-badge" style="color: {color}; border-color: {color}; background-color: {bg};">
-                    ● {es_status}
-                </span>
-            </div>
-        </div>
+    # =========================================================================
+    # 4. OBSERVACIONES (Always on Page 1)
+    # =========================================================================
+    comentarios = safe_text(plant.get("comentarios") or "").strip()
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(box_w, 5.5, safe_text("OBSERVACIONES & NOTAS "), border=0, ln=1)
 
-        <div class="species-name">{p.get('species', 'Especie no especificada')}</div>
+    obs_lines = max(1, len(comentarios.split("\n"))) if comentarios else 1
+    obs_box_h = max(20, (obs_lines * 4.8) + 6)
+    obs_box_y = pdf.get_y()
+    pdf.set_draw_color(*CLR_BORDER)
+    pdf.set_fill_color(*CLR_ROW_ALT)
+    pdf.rect(15, obs_box_y, box_w, obs_box_h, style="FD")
 
-        <div class="grid-props">
-   <div class="prop-item">
-                <div class="prop-label">Fecha Siembra/Esqueje</div>
-                <div class="prop-value">{p.get('sowing_cutting_date') or 'No registrada'}</div>
-            </div>
-             <div class="prop-item">
-                <div class="prop-label">Injerto / Patrón</div>
-                <div class="prop-value">{p.get('graft') or 'Sin injerto'}</div>
-            </div>
-            <div class="prop-item">
-                <div class="prop-label">Linaje / Padres</div>
-                <div class="prop-value">{p.get('padres') or 'Desconocido'}</div>
-            </div>
-         
-            <div class="prop-item">
-                <div class="prop-label">Último Trasplante</div>
-                <div class="prop-value">{p.get('last_repotted') or 'No registrado'}</div>
-            </div>
-            <div class="prop-item prop-full">
-                <div class="prop-label">Última Poda </div>
-                <div class="prop-value">{p.get('last_pruned') or 'Sin registro de poda'}</div>
-            </div>
-        </div>
+    pdf.set_xy(18, obs_box_y + 3)
+    pdf.set_font("Helvetica", "", 8.5)
+    if comentarios:
+        pdf.set_text_color(*CLR_DARK)
+        pdf.multi_cell(box_w - 6, 4.6, comentarios)
+    else:
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(box_w - 6, 6, safe_text("Sin observaciones registradas para este ejemplar."), border=0)
 
-        <div class="section-title">Historial de Fertilización y Tratamientos</div>
-        <div class="text-box">{p.get('fertilizante') or 'Sin tratamientos registrados a la fecha.'}</div>
+    pdf.set_y(obs_box_y + obs_box_h + 5)
 
-        <div class="section-title">Observaciones</div>
-        <div class="text-box">{p.get('comentarios') or 'Sin notas adicionales.'}</div>
+    # =========================================================================
+    # 5. REGISTRO FOTOGRÁFICO DE ARCHIVO (At the bottom of the file)
+    # =========================================================================
+    all_images = get_all_valid_images(plant)
+    img_count = len(all_images)
 
-        <div class="section-title">Evidencia Fotográfica ({len(photos)} fotos)</div>
-        {gallery_content}
-    </div>
-    """
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(*CLR_PRIMARY)
+    header_caption = f"REGISTRO FOTOGRÁFICO DE ARCHIVO ({img_count} FOTOGRAFÍA{'S' if img_count != 1 else ''})" if img_count > 0 else "REGISTRO FOTOGRÁFICO DE ARCHIVO"
+    pdf.cell(box_w, 5.5, safe_text(header_caption), border=0, ln=1)
+
+    current_y = pdf.get_y()
+    space_left = 270 - current_y
+
+    if img_count == 0:
+        # Standard placeholder frame
+        ph_h = 24
+        pdf.set_draw_color(*CLR_BORDER)
+        pdf.set_fill_color(*CLR_ROW_ALT)
+        pdf.rect(15, current_y, box_w, ph_h, style="FD")
+        pdf.set_xy(15, current_y + 8)
+        pdf.set_font("Helvetica", "I", 8.5)
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(box_w, 7, safe_text("Sin registro fotográfico adjunto para este ejemplar."), border=0, align="C")
+
+    elif img_count == 1:
+        # Single standardized centered image
+        img_w = 110
+        img_h = 75
+        if space_left < (img_h + 10):
+            pdf.add_page()
+            current_y = pdf.get_y()
+        img_x = 15 + (box_w - img_w) / 2
+        caption_txt = f"{os.path.basename(all_images[0])} — Ejemplar [{name}]"
+        draw_standardized_image_frame(pdf, all_images[0], img_x, current_y, img_w, img_h, caption_txt)
+
+    elif img_count == 2:
+        # Two standardized images side-by-side
+        col_gap = 6
+        img_w = (box_w - col_gap) / 2  # 87mm each
+        img_h = 65
+        if space_left < (img_h + 10):
+            pdf.add_page()
+            current_y = pdf.get_y()
+        for idx, img_p in enumerate(all_images):
+            img_x = 15 + idx * (img_w + col_gap)
+            caption_txt = f"Foto {idx + 1}/{img_count}: {os.path.basename(img_p)}"
+            draw_standardized_image_frame(pdf, img_p, img_x, current_y, img_w, img_h, caption_txt)
+
+    else:
+        # 3 or more images: Standard 2-column grid
+        col_gap = 6
+        img_w = (box_w - col_gap) / 2  # 87mm each
+
+        # Try to fit 3-4 images in remaining space if sufficient, else use standard 62mm height
+        if img_count <= 4 and space_left >= (2 * 54 + col_gap + 8):
+            img_h = 54
+        else:
+            img_h = 62
+
+        for idx, img_p in enumerate(all_images):
+            col = idx % 2
+            # Check if starting a new row requires page break
+            if col == 0 and idx > 0:
+                current_y += img_h + 6
+
+            if col == 0 and (current_y + img_h + 8 > 270):
+                pdf.add_page()
+                current_y = pdf.get_y()
+
+            img_x = 15 + col * (img_w + col_gap)
+            caption_txt = f"Foto {idx + 1}/{img_count}: {os.path.basename(img_p)}"
+            draw_standardized_image_frame(pdf, img_p, img_x, current_y, img_w, img_h, caption_txt)
+
+    return bytes(pdf.output())
 
 
-def generate_single_plant_pdf(plant: Dict[str, Any]) -> bytes:
-    """Generates an individual botanical dossier PDF for a single plant."""
-    key = plant.get("name", "PLANTA")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def generate_catalog_pdf(plants: list, title: str = "CATÁLOGO GENERAL DE EJEMPLARES") -> bytes:
+    """Generate a complete catalog PDF using fpdf2."""
+    pdf = BotanicalPDF(title_text=title)
+    pdf.add_page()
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <title>Dossier Botánico - {key}</title>
-        <style>
-            {get_pdf_css()}
-        </style>
-    </head>
-    <body>
-        <div class="header-banner">
-            <div class="header-title-box">
-                <div>
-                    <h1 class="main-title">Plantation // Ficha Técnica Individual</h1>
-                    <p class="sub-title">Documento de control biológico, linaje y estado.</p>
-                </div>
-                <div class="meta-box">
-                    <div>FECHA EMISIÓN: {now_str}</div>
-                    <div>ESTÁNDAR: PDF-1.4</div>
-                    <div style="color: #ed8796; font-weight: bold; margin-top: 3px;"> // Uso interno</div>
-                </div>
-            </div>
-        </div>
+    total_count = len(plants)
+    ok_count = sum(1 for p in plants if (p.get("status") or "").upper() == "OK")
+    not_ok_count = total_count - ok_count
+    with_alias_count = sum(1 for p in plants if (p.get("aka") or "").strip())
 
-        {render_plant_card_html(plant)}
-    </body>
-    </html>
-    """
+    # Summary Statistics Ribbon
+    start_y = pdf.get_y()
+    card_w = (pdf.w - 30 - 9) / 4  # 4 cards
+    stats = [
+        ("TOTAL EJEMPLARES", str(total_count), CLR_PRIMARY),
+        ("ESTADO OK", str(ok_count), CLR_OK_TXT),
+        ("ESTADO notOK", str(not_ok_count), CLR_NOTOK_TXT),
+        ("CON ALIAS", str(with_alias_count), CLR_PEACH),
+    ]
 
-    doc = weasyprint.HTML(string=html_content)
-    # Produce PDF bytes
-    return doc.write_pdf()
+    for i, (title, val, val_col) in enumerate(stats):
+        cx = 15 + (i * (card_w + 3))
+        pdf.set_fill_color(*CLR_PRIMARY_LIGHT)
+        pdf.set_draw_color(*CLR_BORDER)
+        pdf.set_line_width(0.3)
+        pdf.rect(cx, start_y, card_w, 14, style="FD")
 
+        pdf.set_xy(cx, start_y + 2)
+        pdf.set_font("Helvetica", "B", 6.5)
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(card_w, 3.5, safe_text(title), border=0, align="C")
 
-def generate_catalog_pdf(plants: List[Dict[str, Any]], title: str = "CATÁLOGO GENERAL DE EJEMPLARES") -> bytes:
-    """Generates a complete multi-page dossier PDF containing index summary table and all specimen cards."""
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        pdf.set_xy(cx, start_y + 6)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.set_text_color(*val_col)
+        pdf.cell(card_w, 6, safe_text(val), border=0, align="C")
 
-    # Build Index Table rows
-    table_rows = []
-    for p in plants:
-        status = p.get("status", "Ok")
-        color, _, es_status = STATUS_COLORS.get(status, ("#cad3f5", "#24273a", status))
-        table_rows.append(f"""
-            <tr>
-                <td style="font-weight: bold; color: #ed8796;">{p.get('name')}</td>
-                <td style="font-style: italic;">{p.get('species')}</td>
-                <td><span style="color: {color}; font-weight: bold;">● {es_status}</span></td>
-                <td>{p.get('location') or '—'}</td>
-                <td>{p.get('registration_date') or '—'}</td>
-                <td>{p.get('padres') or '—'}</td>
-                <td>{p.get('graft') or '—'}</td>
-                <td style="text-align: center;">{len(p.get('photos', []))}</td>
-            </tr>
-        """)
+    pdf.set_y(start_y + 18)
 
-    index_html = f"""
-        <div class="card" style="margin-top: 10px;">
-            <div class="section-title" style="margin-top: 0; font-size: 11pt;">Índice General y Sumario de Ejemplares Registrados ({len(plants)} plantas)</div>
-            <table class="index-table">
-                <thead>
-                    <tr>
-                        <th>Clave</th>
-                        <th>Especie Botánica</th>
-                        <th>Estado Sanitario</th>
-                        <th>Ubicación</th>
-                        <th>Fecha Reg.</th>
-                        <th>Linaje / Padres</th>
-                        <th>Injerto</th>
-                        <th>Fotos</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join(table_rows)}
-                </tbody>
-            </table>
-        </div>
-    """
+    # Index Table Section
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(0, 6, safe_text("ÍNDICE DE COLECCIÓN"), border=0, ln=1)
 
-    # Build cards
-    cards_html = []
-    for idx, p in enumerate(plants):
-        break_class = ' class="page-break"' if idx > 0 else ''
+    # Table Headers
+    cols = [
+        ("Clave", 22),
+        ("Alias", 32),
+        ("Especie Botánica", 54),
+        ("Estado", 20),
+        ("Ubicación", 28),
+        ("Siembra / Esqueje", 24)
+    ]
+    
+    header_y = pdf.get_y()
+    pdf.set_fill_color(*CLR_PRIMARY)
+    pdf.rect(15, header_y, pdf.w - 30, 6.5, style="F")
 
-        cards_html.append(f"""
-            <div{break_class}>
-                {render_plant_card_html(p)}
-            </div>
-        """)
+    pdf.set_xy(15, header_y)
+    pdf.set_font("Helvetica", "B", 7.5)
+    pdf.set_text_color(255, 255, 255)
+    for title, w in cols:
+        pdf.cell(w, 6.5, safe_text(title), border=0, ln=0, align="C" if title in ["Clave", "Estado"] else "L")
+    pdf.ln(6.5)
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <title>Plantation - Dossier General</title>
-        <style>
-            {get_pdf_css()}
-        </style>
-    </head>
-    <body>
-        <div class="header-banner">
-            <div class="header-title-box">
-                <div>
-                    <div class="app-tag">Plantation</div>
-                    <h1 class="main-title">{title}</h1>
-                    <p class="sub-title">Inventario integral, linajes cruzados, tratamientos sanitarios e historial fotográfico.</p>
-                </div>
-                <div class="meta-box">
-                    <div>FECHA GENERACIÓN: {now_str}</div>
-                    <div>TOTAL REGISTROS: {len(plants)}</div>
-                    <div style="color: #ed8796; font-weight: bold; margin-top: 3px;">CATÁLOGO OFICIAL</div>
-                </div>
-            </div>
-        </div>
+    # Table Rows
+    pdf.set_draw_color(*CLR_BORDER)
+    for i, plant in enumerate(plants):
+        # Auto-page break handled gracefully by FPDF
+        if pdf.get_y() > pdf.h - 22:
+            pdf.add_page()
+            # Redraw mini table header
+            h_y = pdf.get_y()
+            pdf.set_fill_color(*CLR_PRIMARY)
+            pdf.rect(15, h_y, pdf.w - 30, 6.5, style="F")
+            pdf.set_xy(15, h_y)
+            pdf.set_font("Helvetica", "B", 7.5)
+            pdf.set_text_color(255, 255, 255)
+            for title, w in cols:
+                pdf.cell(w, 6.5, safe_text(title), border=0, ln=0, align="C" if title in ["Clave", "Estado"] else "L")
+            pdf.ln(6.5)
 
-        {index_html}
+        row_y = pdf.get_y()
+        if i % 2 == 1:
+            pdf.set_fill_color(*CLR_ROW_ALT)
+            pdf.rect(15, row_y, pdf.w - 30, 5.8, style="F")
 
-        <div class="page-break"></div>
+        p_name = safe_text(plant.get("name", ""))
+        p_aka = safe_text(plant.get("aka", ""))
+        p_species = safe_text(plant.get("species", ""))
+        p_status = (plant.get("status") or "OK").upper()
+        p_loc = safe_text(plant.get("location", ""))
+        p_date = safe_text(plant.get("sowing_cutting_date", ""))
 
-        <div style="margin-bottom: 15px;">
-            <h2 style="color: #ed8796; font-size: 13pt; margin: 0; letter-spacing: 1px;">FICHAS TÉCNICAS DETALLADAS</h2>
-            <div style="color: #8087a2; font-size: 8.5pt;">EXPEDIENTE INDIVIDUAL POR EJEMPLAR</div>
-        </div>
+        pdf.set_font("Helvetica", "B", 7.5)
+        pdf.set_text_color(*CLR_PRIMARY)
+        pdf.cell(cols[0][1], 5.8, p_name, border=0, ln=0, align="C")
 
-        {''.join(cards_html)}
-    </body>
-    </html>
-    """
+        pdf.set_font("Helvetica", "B" if p_aka else "", 7.5)
+        pdf.set_text_color(*CLR_PEACH if p_aka else CLR_MUTED)
+        pdf.cell(cols[1][1], 5.8, p_aka or "—", border=0, ln=0, align="L")
 
-    doc = weasyprint.HTML(string=html_content)
-    return doc.write_pdf()
+        pdf.set_font("Helvetica", "", 7.5)
+        pdf.set_text_color(*CLR_DARK)
+        pdf.cell(cols[2][1], 5.8, p_species[:32], border=0, ln=0, align="L")
+
+        # Estado cell
+        is_ok = p_status == "OK"
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.set_text_color(*(CLR_OK_TXT if is_ok else CLR_NOTOK_TXT))
+        pdf.cell(cols[3][1], 5.8, "OK" if is_ok else "notOK", border=0, ln=0, align="C")
+
+        pdf.set_font("Helvetica", "", 7.5)
+        pdf.set_text_color(*CLR_DARK)
+        pdf.cell(cols[4][1], 5.8, p_loc[:16] or "—", border=0, ln=0, align="L")
+        pdf.cell(cols[5][1], 5.8, p_date or "—", border=0, ln=1, align="L")
+
+        # Subtle row line
+        pdf.set_draw_color(*CLR_BORDER)
+        pdf.set_line_width(0.15)
+        pdf.line(15, pdf.get_y(), pdf.w - 15, pdf.get_y())
+
+    pdf.ln(8)
+
+    # Detailed Specimen Cards Section (2 per page)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.cell(0, 6, safe_text("FICHAS TÉCNICAS DETALLADAS"), border=0, ln=1)
+
+    for plant in plants:
+        # Check if enough space for a card (58mm), else new page
+        if pdf.get_y() > pdf.h - 68:
+            pdf.add_page()
+
+        card_start_y = pdf.get_y()
+        card_h = 54
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_draw_color(*CLR_BORDER)
+        pdf.set_line_width(0.3)
+        pdf.rect(15, card_start_y, pdf.w - 30, card_h, style="FD")
+
+        # Top banner within card
+        pdf.set_fill_color(*CLR_PRIMARY_LIGHT)
+        pdf.rect(15, card_start_y, pdf.w - 30, 8, style="F")
+
+        p_name = safe_text(plant.get("name", "N/A"))
+        p_aka = safe_text(plant.get("aka", ""))
+        p_species = safe_text(plant.get("species", "Sin especie registrada"))
+        p_status = plant.get("status", "OK")
+
+        pdf.set_xy(18, card_start_y + 1.5)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*CLR_PRIMARY)
+        pdf.cell(30, 5, f"[{p_name}]", border=0, ln=0)
+
+        if p_aka:
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_text_color(*CLR_PEACH)
+            pdf.cell(45, 5, f'"{p_aka}"', border=0, ln=0)
+
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(*CLR_DARK)
+        pdf.cell(65, 5, p_species[:40], border=0, ln=0)
+
+        pdf.draw_status_badge(pdf.w - 38, card_start_y + 1.2, p_status, w=20, h=5.5)
+
+        # Card body: Thumbnail left (38mm), details right
+        thumb_path = get_first_valid_image(plant)
+        thumb_x = 18
+        thumb_y = card_start_y + 11
+        thumb_w = 34
+        thumb_h = 38
+
+        if thumb_path:
+            try:
+                pdf.image(thumb_path, x=thumb_x, y=thumb_y, w=thumb_w, h=thumb_h)
+            except Exception:
+                thumb_path = None
+
+        if not thumb_path:
+            pdf.set_fill_color(*CLR_ROW_ALT)
+            pdf.rect(thumb_x, thumb_y, thumb_w, thumb_h, style="F")
+            pdf.set_xy(thumb_x, thumb_y + 16)
+            pdf.set_font("Helvetica", "I", 6.5)
+            pdf.set_text_color(*CLR_MUTED)
+            pdf.cell(thumb_w, 4, safe_text("Sin foto"), border=0, align="C")
+
+        # Details on right
+        dt_x = thumb_x + thumb_w + 4
+        dt_w = pdf.w - 30 - thumb_w - 10
+        dt_y = thumb_y
+
+        fields = [
+            ("Ubicación", safe_text(plant.get("location") or "Sin registrar")),
+            ("Fecha Siembra / Esqueje", safe_text(plant.get("sowing_cutting_date") or "—")),
+            ("Edad", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date")))),
+            ("Injerto", safe_text(plant.get("graft") or "—")),
+            ("Linaje (Padres)", safe_text(plant.get("padres") or "—")),
+            ("Última Poda", safe_text(plant.get("last_pruned") or "—")),
+            ("Último Trasplante", safe_text(plant.get("last_repotted") or "—")),
+        ]
+
+        row_h_card = 4.8
+        for j, (lbl, val) in enumerate(fields):
+            pdf.set_xy(dt_x, dt_y + (j * row_h_card))
+            pdf.set_font("Helvetica", "B", 7)
+            pdf.set_text_color(*CLR_MUTED)
+            pdf.cell(38, row_h_card, safe_text(lbl), border=0, ln=0)
+
+            pdf.set_font("Helvetica", "", 7)
+            pdf.set_text_color(*CLR_DARK)
+            pdf.cell(dt_w - 38, row_h_card, safe_text(val), border=0, ln=1)
+
+        pdf.set_y(card_start_y + card_h + 5)
+
+    return bytes(pdf.output())
