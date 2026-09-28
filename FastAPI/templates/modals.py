@@ -260,43 +260,43 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                 <div class="form-grid">
                     <div class="form-group">
                         <span class="form-label">Alias</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 700; color: var(--peach-orange);">{aka_val or '—'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{aka_val or '—'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Altura (Fecha - CM)</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--green-sage);">{plant.get('height') or '—'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{plant.get('height') or '—'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Edad</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600;">{age_detailed}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{age_detailed}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Fecha Siembra / Esquejado</span>
-                        <div class="form-input" style="background: var(--bg-mantle);">{plant.get('sowing_cutting_date') or '—'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('sowing_cutting_date') or '—'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Linaje (Padres)</span>
-                        <div class="form-input" style="background: var(--bg-mantle); word-break: break-word;">{plant.get('padres') or 'Desconocido'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); word-break: break-word;">{plant.get('padres') or 'Desconocido'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Injerto</span>
-                        <div class="form-input" style="background: var(--bg-mantle); word-break: break-word;">{plant.get('graft') or 'Sin injerto (Raíz propia)'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); word-break: break-word;">{plant.get('graft') or 'Sin injerto (Raíz propia)'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Última Poda</span>
-                        <div class="form-input" style="background: var(--bg-mantle);">{plant.get('last_pruned') or '—'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('last_pruned') or '—'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Último Trasplante</span>
-                        <div class="form-input" style="background: var(--bg-mantle);">{plant.get('last_repotted') or '—'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('last_repotted') or '—'}</div>
                     </div>
                     <div class="form-group full">
                         <span class="form-label">Fertilización & Tratamientos Aplicados</span>
-                        <div class="form-input" style="background: var(--bg-mantle); min-height: 50px; white-space: pre-wrap;">{plant.get('fertilizante') or 'Sin tratamientos registrados'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); min-height: 50px; white-space: pre-wrap;">{plant.get('fertilizante') or 'Sin tratamientos registrados'}</div>
                     </div>
                     <div class="form-group full">
                         <span class="form-label">Comentarios & Observaciones Clínicas</span>
-                        <div class="form-input" style="background: var(--bg-mantle); min-height: 50px; white-space: pre-wrap;">{plant.get('comentarios') or 'Sin observaciones'}</div>
+                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); min-height: 50px; white-space: pre-wrap;">{plant.get('comentarios') or 'Sin observaciones'}</div>
                     </div>
                 </div>
 

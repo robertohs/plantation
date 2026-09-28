@@ -107,11 +107,15 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
             color: var(--red-crimson);
             font-size: 11px;
             letter-spacing: 0.8px;
+            font-weight: 700;
+            text-transform: uppercase;
             width: 28%;
         }}
         .dossier-table td {{
             background: var(--bg-surface);
-            color: var(--text-main);
+            color: var(--info-field-color);
+            font-size: 13px;
+            font-weight: 500;
         }}
         .dossier-gallery {{
             display: grid;
@@ -209,15 +213,15 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
             <tbody>
                 <tr>
                     <th>ALIAS</th>
-                    <td><strong style="color: var(--peach-orange);">{aka_val or '—'}</strong></td>
+                    <td><strong style="color: var(--info-field-color);">{aka_val or '—'}</strong></td>
                 </tr>
                 <tr>
                     <th>ALTURA (FECHA - CM)</th>
-                    <td><strong style="color: var(--green-moss);">{plant.get('height') or '—'}</strong></td>
+                    <td><strong style="color: var(--info-field-color);">{plant.get('height') or '—'}</strong></td>
                 </tr>
                 <tr>
                     <th>EDAD</th>
-                    <td><strong>{age_detailed}</strong></td>
+                    <td><strong style="color: var(--info-field-color);">{age_detailed}</strong></td>
                 </tr>
                 <tr>
                     <th>FECHA SIEMBRA / ESQUEJADO</th>

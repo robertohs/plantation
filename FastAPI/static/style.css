@@ -39,6 +39,9 @@
   --peach-orange: #f5a97f;
   --peach-dark: #382923;
 
+  /* Info fields value color - crisp & distinct from titles */
+  --info-field-color: #89dceb;
+
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
 
@@ -72,6 +75,9 @@
   --peach-orange: #fb923c;
   --peach-dark: #38210f;
 
+  /* Info fields value color - crisp amber gold distinct from cyan titles */
+  --info-field-color: #fde047;
+
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
 
@@ -103,6 +109,9 @@
   
   --peach-orange: #e88d58;
   --peach-dark: #381c0c;
+
+  /* Info fields value color - luminous ice cyan distinct from golden titles */
+  --info-field-color: #67e8f9;
 
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
@@ -137,6 +146,9 @@
   --peach-orange: #ff9100;
   --peach-dark: #331c00;
 
+  /* Info fields value color - neon mint/cyan distinct from laser red */
+  --info-field-color: #00f5d4;
+
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
 
@@ -169,6 +181,9 @@
   
   --peach-orange: #d1a84f;
   --peach-dark: #382c0f;
+
+  /* Info fields value color - crisp sky cyan distinct from olive titles */
+  --info-field-color: #7dd3fc;
 
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
@@ -203,6 +218,9 @@
   --peach-orange: #ff7557;
   --peach-dark: #38150a;
 
+  /* Info fields value color - radiant succulent mint distinct from hot fuchsia */
+  --info-field-color: #45e08b;
+
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
 
@@ -235,6 +253,9 @@
   
   --peach-orange: #ffd166;
   --peach-dark: #3b2d07;
+
+  /* Info fields value color - electric starlight turquoise distinct from pink */
+  --info-field-color: #58ddf5;
 
   --font-mono: 'Maple Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
 }
@@ -994,25 +1015,46 @@ body {
 
 .form-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-sub);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  margin-bottom: 3px;
+  user-select: none;
 }
 
 .form-input, .form-select, .form-textarea {
   background-color: var(--bg-crust);
   border: 1px solid var(--border-dim);
-  color: var(--text-main);
+  color: var(--info-field-color);
   font-family: var(--font-mono);
-  font-size: 12.5px;
-  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 11px;
   border-radius: 3px;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
-  border-color: var(--red-crimson);
+  border-color: var(--info-field-color);
+  box-shadow: 0 0 0 1px var(--info-field-color);
+}
+
+.form-input::placeholder, .form-textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 0.6;
+  font-weight: normal;
+}
+
+input[type="date"].form-input {
+  color-scheme: dark;
+  color: var(--info-field-color);
+}
+
+.info-field-value {
+  color: var(--info-field-color) !important;
+  font-weight: 600;
 }
 
 .form-textarea {
