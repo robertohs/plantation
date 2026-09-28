@@ -127,6 +127,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
             <input type="hidden" id="current-status-filter" value="ALL" />
             <input type="hidden" id="current-age-filter" value="ALL" />
+            <input type="hidden" id="current-height-filter" value="ALL" />
 
             <div class="filter-bar" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
@@ -171,6 +172,32 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             class="status-pill status-pill-age age-filter-btn"
                             onclick="applyPlantFilter('age', '3_plus', this)">
                         3+ AÑOS
+                    </button>
+                </div>
+
+                <div style="display: inline-block; width: 1px; height: 18px; background: var(--border-dim); margin: 0 4px;"></div>
+
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span class="filter-label">ALTURA:</span>
+                    <button type="button"
+                            class="status-pill height-filter-btn active"
+                            onclick="applyPlantFilter('height', 'ALL', this)">
+                        TODAS
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-height height-filter-btn"
+                            onclick="applyPlantFilter('height', 'less_15', this)">
+                        &lt; 15 cm
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-height height-filter-btn"
+                            onclick="applyPlantFilter('height', '15_to_35', this)">
+                        15 - 35 cm
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-height height-filter-btn"
+                            onclick="applyPlantFilter('height', '35_plus', this)">
+                        35+ cm
                     </button>
                 </div>
             </div>
@@ -272,11 +299,13 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             var search = searchInp ? searchInp.value.trim() : '';
             var statusVal = document.getElementById('current-status-filter') ? document.getElementById('current-status-filter').value : 'ALL';
             var ageVal = document.getElementById('current-age-filter') ? document.getElementById('current-age-filter').value : 'ALL';
+            var heightVal = document.getElementById('current-height-filter') ? document.getElementById('current-height-filter').value : 'ALL';
 
             var params = new URLSearchParams();
             if (search) params.set('search', search);
             if (statusVal && statusVal !== 'ALL') params.set('status', statusVal);
             if (ageVal && ageVal !== 'ALL') params.set('age', ageVal);
+            if (heightVal && heightVal !== 'ALL') params.set('height', heightVal);
 
             var qs = params.toString();
             var endpoint = '/plants' + (qs ? '?' + qs : '');
@@ -305,6 +334,12 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 var el = document.getElementById('current-age-filter');
                 if (el) el.value = value;
                 document.querySelectorAll('.age-filter-btn').forEach(function(b) {{
+                    b.classList.remove('active');
+                }});
+            }} else if (type === 'height') {{
+                var el = document.getElementById('current-height-filter');
+                if (el) el.value = value;
+                document.querySelectorAll('.height-filter-btn').forEach(function(b) {{
                     b.classList.remove('active');
                 }});
             }}

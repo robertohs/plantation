@@ -202,8 +202,8 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
                     <td><strong style="color: var(--peach-orange);">{aka_val or '—'}</strong></td>
                 </tr>
                 <tr>
-                    <th>FECHA DE REGISTRO</th>
-                    <td>{plant.get('registration_date') or '—'}</td>
+                    <th>ALTURA (FECHA - CM)</th>
+                    <td><strong style="color: var(--green-moss);">{plant.get('height') or '—'}</strong></td>
                 </tr>
                 <tr>
                     <th>EDAD</th>

@@ -122,8 +122,8 @@ def render_card_html(p: Dict[str, Any]) -> str:
                 <span class="meta-val">{p.get('graft') or 'Raíz propia'}</span>
             </div>
             <div>
-                <span class="meta-label">REG:</span>
-                <span class="meta-val">{p.get('registration_date') or '—'}</span>
+                <span class="meta-label">ALTURA:</span>
+                <span class="meta-val" style="color: var(--green-sage);">{p.get('height') or '—'}</span>
             </div>
         </div>
 

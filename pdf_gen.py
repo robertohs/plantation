@@ -252,9 +252,9 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
     ]
     specs_right = [
         ("Alias", aka or "—"),
+        ("Altura (Fecha - CM)", safe_text(plant.get("height") or "—")),
         ("Último Trasplante", safe_text(plant.get("last_repotted") or "—")),
         ("Última Poda", safe_text(plant.get("last_pruned") or "—")),
-
     ]
 
     table_y = pdf.get_y()
@@ -617,6 +617,7 @@ def generate_catalog_pdf(plants: list, title: str = "CATÁLOGO GENERAL DE EJEMPL
 
         fields = [
             ("Ubicación", safe_text(plant.get("location") or "Sin registrar")),
+            ("Altura (Fecha - CM)", safe_text(plant.get("height") or "—")),
             ("Fecha Siembra / Esqueje", safe_text(plant.get("sowing_cutting_date") or "—")),
             ("Edad", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date")))),
             ("Injerto", safe_text(plant.get("graft") or "—")),
@@ -625,7 +626,7 @@ def generate_catalog_pdf(plants: list, title: str = "CATÁLOGO GENERAL DE EJEMPL
             ("Último Trasplante", safe_text(plant.get("last_repotted") or "—")),
         ]
 
-        row_h_card = 4.8
+        row_h_card = 4.4
         for j, (lbl, val) in enumerate(fields):
             pdf.set_xy(dt_x, dt_y + (j * row_h_card))
             pdf.set_font("Helvetica", "B", 7)

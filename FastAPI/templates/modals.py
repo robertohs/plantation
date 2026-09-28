@@ -26,8 +26,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             return s[:10]
         return ""
 
-    raw_reg = p.get("registration_date")
-    reg_val = _sanitize_date(raw_reg) or (datetime.now().strftime("%Y-%m-%d") if not is_edit else "")
+    height_val = p.get("height", "")
     sow_val = _sanitize_date(p.get("sowing_cutting_date"))
     graft_val = p.get("graft", "")
     padres_val = p.get("padres", "")
@@ -124,13 +123,15 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-registration_date">FECHA DE REGISTRO EN SISTEMA</label>
-                <input type="date"
-                       id="inp-registration_date"
-                       name="registration_date"
+                <label class="form-label" for="inp-height">ALTURA (FECHA - ALTURA CM)</label>
+                <input type="text"
+                       id="inp-height"
+                       name="height"
                        class="form-input"
-                       value="{reg_val}" />
-                <div class="form-help">Fecha de incorporación al fichero de Plantation.</div>
+                       value="{height_val}"
+                       placeholder="Ej: 2026-03-10 - 14.5 cm"
+                       autocomplete="off" />
+                <div class="form-help">Medición registrada (Formato: Fecha - Altura CM).</div>
             </div>
 
             <div class="form-group">
@@ -273,8 +274,8 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                         <div class="form-input" style="background: var(--bg-mantle); font-weight: 700; color: var(--peach-orange);">{aka_val or '—'}</div>
                     </div>
                     <div class="form-group">
-                        <span class="form-label">Fecha de Registro</span>
-                        <div class="form-input" style="background: var(--bg-mantle);">{plant.get('registration_date') or '—'}</div>
+                        <span class="form-label">Altura (Fecha - CM)</span>
+                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--green-sage);">{plant.get('height') or '—'}</div>
                     </div>
                     <div class="form-group">
                         <span class="form-label">Edad</span>

@@ -33,6 +33,8 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
         photo_badge = f'<span style="color: var(--blue-sky); font-weight: bold;">{len(photos)}</span>' if photos else '<span style="color: var(--text-dim);">0</span>'
         aka_display = f'<span style="color: var(--peach-orange); font-weight: 600;">{p.get("aka")}</span>' if p.get("aka") else '<span style="color: var(--text-dim);">—</span>'
 
+        height_display = f'<span style="color: var(--green-sage); font-size: 11px;">{p.get("height")}</span>' if p.get("height") else '<span style="color: var(--text-dim);">—</span>'
+
         rows.append(f"""
             <tr>
                 <td style="text-align: center;">
@@ -43,6 +45,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                 <td style="font-style: italic; color: var(--blue-sky); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{p.get('species')}">{p.get('species')}</td>
                 <td><span class="status-badge {status_cls}" style="font-size: 9.5px;">● {status_es}</span></td>
                 <td>{p.get('location') or '—'}</td>
+                <td>{height_display}</td>
                 <td>{p.get('padres') or '—'}</td>
                 <td>{p.get('graft') or 'Sin injerto'}</td>
                 <td style="text-align: center;">{photo_badge}</td>
@@ -68,7 +71,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
 
     table_body = "".join(rows) if rows else """
         <tr>
-            <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 18px;">
+            <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 18px;">
                 No hay ejemplares en esta categoría de inventario.
             </td>
         </tr>
@@ -197,6 +200,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                             <th>ESPECIE</th>
                             <th>ESTADO</th>
                             <th>UBICACIÓN</th>
+                            <th>ALTURA</th>
                             <th>LINAJE</th>
                             <th>INJERTO</th>
                             <th style="text-align: center;">FOTOS</th>

@@ -52,10 +52,16 @@ def index_view(request: Request):
 def list_plants_partial(
     search: Optional[str] = None,
     status: Optional[str] = None,
-    age: Optional[str] = None
+    age: Optional[str] = None,
+    height: Optional[str] = None
 ):
     """HTMX endpoint returning reactive filtered plants grid."""
-    plants = db.get_plants(search_query=search, status_filter=status, age_filter=age)
+    plants = db.get_plants(
+        search_query=search,
+        status_filter=status,
+        age_filter=age,
+        height_filter=height
+    )
     return HTMLResponse(render_plants_grid(plants))
 
 
@@ -85,6 +91,7 @@ async def create_plant_submit(
     aka: str = Form(""),
     location: str = Form(""),
     status: str = Form("OK"),
+    height: str = Form(""),
     registration_date: str = Form(""),
     sowing_cutting_date: str = Form(""),
     graft: str = Form(""),
@@ -117,6 +124,7 @@ async def create_plant_submit(
         "aka": aka.strip(),
         "location": location.strip(),
         "status": status.strip(),
+        "height": height.strip(),
         "registration_date": registration_date.strip(),
         "sowing_cutting_date": sowing_cutting_date.strip(),
         "graft": graft.strip(),
@@ -157,6 +165,7 @@ def update_plant_submit(
     aka: str = Form(""),
     location: str = Form(""),
     status: str = Form("OK"),
+    height: str = Form(""),
     registration_date: str = Form(""),
     sowing_cutting_date: str = Form(""),
     graft: str = Form(""),
@@ -172,6 +181,7 @@ def update_plant_submit(
         "aka": aka.strip(),
         "location": location.strip(),
         "status": status.strip(),
+        "height": height.strip(),
         "registration_date": registration_date.strip(),
         "sowing_cutting_date": sowing_cutting_date.strip(),
         "graft": graft.strip(),
@@ -338,8 +348,8 @@ def export_inventory_csv():
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
     writer.writerow([
-        "KEY", "ALIAS", "ESPECIE", "ESTADO", "UBICACION",
-        "LINAJE_PADRES", "FECHA_REGISTRO", "FECHA_SIEMBRA_ESQUEJE",
+        "KEY", "ALIAS", "ESPECIE", "ESTADO", "UBICACION", "ALTURA_FECHA_CM",
+        "LINAJE_PADRES", "FECHA_SIEMBRA_ESQUEJE",
         "INJERTO", "ULTIMA_PODA", "ULTIMO_TRASPLANTE", "FERTILIZANTE",
         "FOTOS_TOTAL", "OBSERVACIONES"
     ])
@@ -352,8 +362,8 @@ def export_inventory_csv():
             p.get("species", ""),
             p.get("status", "OK"),
             p.get("location", ""),
+            p.get("height", ""),
             p.get("padres", ""),
-            p.get("registration_date", ""),
             p.get("sowing_cutting_date", ""),
             p.get("graft", ""),
             p.get("last_pruned", ""),

@@ -418,6 +418,16 @@ body {
   border-color: var(--blue-sky);
 }
 
+.status-pill-height {
+  border-color: var(--border-active);
+  color: var(--green-sage);
+}
+.status-pill-height.active {
+  background-color: var(--green-sage);
+  color: #111;
+  border-color: var(--green-sage);
+}
+
 /* Stats Summary Line */
 .stats-summary {
   display: flex;
