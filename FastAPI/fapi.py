@@ -9,7 +9,7 @@ import os
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Form, HTTPException, Request, Response, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 
 import db
@@ -29,8 +29,10 @@ from .templates.modals import (
 )
 from .templates.admin import render_admin_panel_content
 from .templates.layout import render_index_html
+import stats
 
 router = APIRouter()
+router.include_router(stats.router)
 
 # In-memory admin tray state
 admin_state = {"open": False}
@@ -117,6 +119,7 @@ async def create_plant_submit(
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
     comentarios: str = Form(""),
+    indxw: Optional[str] = Form("0"),
     photos: List[UploadFile] = File(None)
 ):
     """Processes creation of a new plant record with photo uploads."""
@@ -150,6 +153,7 @@ async def create_plant_submit(
         "last_repotted": last_repotted.strip(),
         "fertilizante": fertilizante.strip(),
         "comentarios": comentarios.strip(),
+        "indxw": 1 if (indxw or "").strip() in ("1", "true", "True", "on") else 0,
         "photos": saved_photos
     }
 
@@ -190,7 +194,8 @@ def update_plant_submit(
     last_pruned: str = Form(""),
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
-    comentarios: str = Form("")
+    comentarios: str = Form(""),
+    indxw: Optional[str] = Form(None)
 ):
     """Updates plant details and updates view modal and card out-of-band."""
     plant_data = {
@@ -208,6 +213,8 @@ def update_plant_submit(
         "fertilizante": fertilizante.strip(),
         "comentarios": comentarios.strip()
     }
+    if indxw is not None:
+        plant_data["indxw"] = 1 if indxw.strip() in ("1", "true", "True", "on") else 0
 
     success, msg = db.update_plant(name, plant_data)
     if not success:
@@ -218,7 +225,7 @@ def update_plant_submit(
         return HTMLResponse("<div class='alert-box alert-error'>Error al recuperar ejemplar.</div>", status_code=500)
 
     modal_content = render_view_plant_modal_content(updated_plant, alert_msg="Cambios guardados exitosamente.")
-    oob_card = f'<div id="plant-card-{name}" hx-swap-oob="outerHTML">{render_card_html(updated_plant)}</div>'
+    oob_card = render_card_html(updated_plant, oob=True)
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
 
     return HTMLResponse(modal_content + oob_card + oob_admin)
@@ -264,7 +271,7 @@ async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)
     photos = updated_plant.get("photos", []) if updated_plant else []
 
     photo_items = [render_photo_item_html(key, ph) for ph in photos]
-    oob_card = f'<div id="plant-card-{key}" hx-swap-oob="outerHTML">{render_card_html(updated_plant)}</div>'
+    oob_card = render_card_html(updated_plant, oob=True)
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
     oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
@@ -290,7 +297,7 @@ def remove_plant_photo(name: str, filename: str):
     photos = plant.get("photos", []) if plant else []
     photo_items = [render_photo_item_html(key, ph) for ph in photos]
 
-    oob_card = f'<div id="plant-card-{key}" hx-swap-oob="outerHTML">{render_card_html(plant)}</div>'
+    oob_card = render_card_html(plant, oob=True)
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
     oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
@@ -367,7 +374,7 @@ def export_inventory_csv():
         "KEY", "ALIAS", "ESPECIE", "ESTADO", "UBICACION", "ALTURA_FECHA_CM",
         "LINAJE_PADRES", "FECHA_SIEMBRA_ESQUEJE",
         "INJERTO", "ULTIMA_PODA", "ULTIMO_TRASPLANTE", "FERTILIZANTE",
-        "FOTOS_TOTAL", "OBSERVACIONES"
+        "FOTOS_TOTAL", "OBSERVACIONES", "INDXW"
     ])
 
     for p in plants:
@@ -386,7 +393,8 @@ def export_inventory_csv():
             p.get("last_repotted", ""),
             p.get("fertilizante", ""),
             len(photos),
-            p.get("comentarios", "").replace("\n", " ")
+            p.get("comentarios", "").replace("\n", " "),
+            int(p.get("indxw", 0))
         ])
 
     csv_data = output.getvalue()
@@ -437,6 +445,22 @@ def download_full_catalog_pdf():
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "no-cache"
+        }
+    )
+
+
+@router.get("/admin/backup.db")
+def download_database_backup():
+    """Generates an instantaneous, non-blocking SQLite snapshot and streams it to the user."""
+    backup_file = db.backup_db()
+    filename = os.path.basename(backup_file)
+    return FileResponse(
+        backup_file,
+        media_type="application/octet-stream",
+        filename=filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-cache"
         }
     )

@@ -1,6 +1,9 @@
-fastapi>=0.115.0
-uvicorn>=0.30.0
-python-multipart>=0.0.9
-fpdf2>=2.8.0
-pillow>=10.0.0
-pillow-heif>=0.18.0
+# Plantation - Pinned Python Dependencies for Zero-Maintenance Stability
+fastapi==0.141.1
+uvicorn==0.54.0
+python-multipart==0.0.32
+pillow==12.3.0
+fpdf2==2.8.9
+pillow_heif==1.8.0
+pydantic==2.13.5
+starlette==1.7.0

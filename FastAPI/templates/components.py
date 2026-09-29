@@ -7,25 +7,8 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 import db
 
-STATUS_BADGE_CLASSES = {
-    "OK": "status-OK",
-    "notOK": "status-notOK",
-    "Ok": "status-OK",
-    "Triving": "status-OK",
-    "Disease": "status-notOK",
-    "Diseaced": "status-notOK",
-    "Extremely Ill": "status-notOK"
-}
-
-STATUS_SPANISH = {
-    "OK": "OK",
-    "notOK": "notOK",
-    "Ok": "OK",
-    "Triving": "OK",
-    "Disease": "notOK",
-    "Diseaced": "notOK",
-    "Extremely Ill": "notOK"
-}
+STATUS_BADGE_CLASSES = {"OK": "status-OK", "notOK": "status-notOK"}
+STATUS_SPANISH = {"OK": "OK", "notOK": "notOK"}
 
 
 def render_photo_item_html(plant_name: str, ph: str) -> str:
@@ -60,7 +43,7 @@ def render_photo_item_html(plant_name: str, ph: str) -> str:
     """
 
 
-def render_card_html(p: Dict[str, Any]) -> str:
+def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
     """Renders a single plant card with bounded headers, concise Alias badge, and thumbnail preview."""
     status = db.normalize_status(p.get("status"))
     status_cls = STATUS_BADGE_CLASSES.get(status, "status-OK")
@@ -99,8 +82,17 @@ def render_card_html(p: Dict[str, Any]) -> str:
     aka = (p.get("aka") or "").strip()
     aka_html = f'<span class="plant-aka" title=\'Alias: "{aka}"\'>"{aka}"</span>' if aka else ""
 
+    oob_attr = ' hx-swap-oob="outerHTML"' if oob else ""
+
     return f"""
-    <div class="plant-card" id="plant-card-{p.get('name')}">
+    <div class="plant-card" id="plant-card-{p.get('name')}"{oob_attr}
+         hx-get="/plants/{p.get('name')}"
+         hx-target="#modal-container"
+         hx-swap="innerHTML"
+         role="button"
+         tabindex="0"
+         onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();this.click();}}"
+         title="Abrir expediente de {p.get('name')}">
         <div class="card-head">
             <div class="card-head-left">
                 <span class="plant-key" title="Clave de ejemplar">{p.get('name')}</span>
@@ -130,16 +122,6 @@ def render_card_html(p: Dict[str, Any]) -> str:
                 <span class="meta-label">ALTURA:</span>
                 <span class="meta-val" style="color: var(--green-sage);">{p.get('height') or '—'}</span>
             </div>
-        </div>
-
-        <div class="card-actions">
-            <button class="btn btn-sm"
-                    hx-get="/plants/{p.get('name')}"
-                    hx-target="#modal-container"
-                    hx-swap="innerHTML"
-                    title="Ver expediente técnico">
-                [EXPEDIENTE]
-            </button>
         </div>
     </div>
     """

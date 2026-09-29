@@ -13,15 +13,20 @@ from typing import Any, Dict, List, Optional, Tuple
 
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DB")
 DB_PATH = os.path.join(DB_DIR, "plantation.db")
+BACKUPS_DIR = os.path.join(DB_DIR, "backups")
+SEEDS_FILE = os.path.join(DB_DIR, "seeds.json")
 
 VALID_STATUSES = ["OK", "notOK"]
 
 
 def get_connection() -> sqlite3.Connection:
-    """Returns a thread-safe connection to SQLite with row_factory configured."""
+    """Returns a thread-safe connection to SQLite with WAL mode, busy timeout, and row_factory."""
     os.makedirs(DB_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 10000;")
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
@@ -31,7 +36,7 @@ def normalize_status(val: Optional[str]) -> str:
     if not val:
         return "OK"
     s = str(val).strip().lower()
-    return "OK" if s in ("ok", "triving", "saludable", "prospero", "próspero", "healthy", "good", "bien") else "notOK"
+    return "OK" if s == "ok" else "notOK"
 
 
 def clean_key(key: str) -> str:
@@ -43,21 +48,12 @@ def parse_plant_date(s: Optional[str]) -> Optional[datetime]:
     """Parses a date string in ISO YYYY-MM-DD or standard formats."""
     if not s or not isinstance(s, str):
         return None
-    s = s.strip()
-    for pattern, group_order in [
-        (r'(\d{4})[-/](\d{1,2})[-/](\d{1,2})', (1, 2, 3)),
-        (r'(\d{1,2})[-/](\d{1,2})[-/](\d{4})', (3, 2, 1)),
-        (r'(\d{4})[-/](\d{1,2})', (1, 2, None)),
-    ]:
-        m = re.search(pattern, s)
-        if m:
-            try:
-                y = int(m.group(group_order[0]))
-                mo = int(m.group(group_order[1]))
-                d = int(m.group(group_order[2])) if group_order[2] else 1
-                return datetime(y, mo, d)
-            except ValueError:
-                pass
+    m = re.search(r'(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?', s.strip())
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1))
+        except ValueError:
+            pass
     return None
 
 
@@ -83,10 +79,9 @@ def calculate_plant_age(sowing_cutting_date: Optional[str], graft: Optional[str]
     if months == 0:
         return "0 meses", "0 meses (Recién sembrada / injertada)"
     if months < 12:
-        m_lbl = f"{months} mes" if months == 1 else f"{months} meses"
-        return m_lbl, f"{m_lbl} (Total: {months} meses)"
-    y = months // 12
-    rem = months % 12
+        lbl = f"{months} mes" if months == 1 else f"{months} meses"
+        return lbl, f"{lbl} (Total: {months} meses)"
+    y, rem = divmod(months, 12)
     y_lbl = f"{y} año" if y == 1 else f"{y} años"
     if rem == 0:
         return f"{y_lbl} ({months} m)", f"{y_lbl} (Total: {months} meses)"
@@ -100,47 +95,55 @@ def calculate_age_display(sowing_cutting_date: Optional[str], graft: Optional[st
     return short
 
 
-# ==============================================================================
-# HEIGHT FILTER CONFIGURATION & HELPER FUNCTIONS
-# Readable & easily extensible definitions for height filtering
-# (< 15 cm, 15 > x < 35 [15 to 35 cm], 35+ cm)
-# ==============================================================================
+def matches_age_filter(months: Optional[int], filter_key: str) -> bool:
+    """Checks if biological age in months matches age filter range."""
+    if months is None:
+        return False
+    k = filter_key.strip().lower()
+    if k in ("less_1", "<1", "less_than_1", "menor_1"):
+        return months < 12
+    if k in ("1_to_2", "1-2", "1_2", "1to2"):
+        return 12 <= months < 36
+    if k in ("3_plus", "3+", "3plus", "mas_3"):
+        return months >= 36
+    return True
 
-def extract_height_cm(height_str: Optional[str]) -> Optional[float]:
+
+def extract_height_cm(val: Optional[str]) -> Optional[float]:
     """
-    Extracts numerical height in centimeters from botanical strings such as:
-      - '2025-06-15 - 4.8 cm'
-      - '12.0 cm'
-      - '28.5'
-      - '42 cm'
-    Returns float (in cm) or None if not measurable.
+    Extracts numerical height in centimeters from botanical records.
+    Examples:
+      - '2025-06-15 - 4.8 cm' -> 4.8
+      - '12.0 cm'             -> 12.0
+      - '28.5'                -> 28.5
     """
-    if not height_str or not isinstance(height_str, str):
-        return None
-    s = height_str.strip()
-    if not s:
+    if not val or not isinstance(val, str):
         return None
 
-    # Format 1: Explicit 'cm' unit (e.g., '4.8 cm', '12cm', '28.5 cm')
-    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*cm\b', s, re.IGNORECASE)
+    text = val.strip()
+    if not text:
+        return None
+
+    # Case 1: Value with explicit 'cm' unit (e.g. '4.8 cm', '12cm')
+    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*cm\b', text, re.IGNORECASE)
     if cm_match:
         try:
             return float(cm_match.group(1).replace(',', '.'))
         except ValueError:
             pass
 
-    # Format 2: Hyphenated record 'DATE - HEIGHT' (e.g. '2025-06-15 - 4.8')
-    if '-' in s:
-        last_chunk = s.split('-')[-1].strip()
-        num_match = re.search(r'(\d+(?:[.,]\d+)?)', last_chunk)
+    # Case 2: Date-separated entry 'DATE - HEIGHT' (e.g. '2025-06-15 - 4.8')
+    if '-' in text:
+        last_segment = text.split('-')[-1].strip()
+        num_match = re.search(r'(\d+(?:[.,]\d+)?)', last_segment)
         if num_match:
             try:
                 return float(num_match.group(1).replace(',', '.'))
             except ValueError:
                 pass
 
-    # Format 3: Standalone number
-    direct_match = re.search(r'^\s*(\d+(?:[.,]\d+)?)\s*$', s)
+    # Case 3: Standalone numeric entry (e.g. '28.5')
+    direct_match = re.match(r'^\s*(\d+(?:[.,]\d+)?)\s*$', text)
     if direct_match:
         try:
             return float(direct_match.group(1).replace(',', '.'))
@@ -150,60 +153,25 @@ def extract_height_cm(height_str: Optional[str]) -> Optional[float]:
     return None
 
 
-# Readable height filter ranges - easily adjusted or extended in the future
-HEIGHT_FILTER_RANGES = {
-    # Range 1: < 15 cm
-    "less_15": {
-        "label": "< 15 cm",
-        "description": "Plantas menores a 15 cm",
-        "predicate": lambda h: h < 15.0
-    },
-    # Range 2: 15 > x < 35 (Between 15 cm and 35 cm)
-    "15_to_35": {
-        "label": "15 - 35 cm",
-        "description": "Plantas entre 15 cm y 35 cm",
-        "predicate": lambda h: 15.0 <= h < 35.0
-    },
-    # Range 3: 35+ cm
-    "35_plus": {
-        "label": "35+ cm",
-        "description": "Plantas de 35 cm o más",
-        "predicate": lambda h: h >= 35.0
-    }
-}
-
-
 def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:
-    """
-    Checks if a plant's height string matches the selected filter key.
-    Accepts:
-      - 'less_15', '<15', '< 15', '< 15 cm'
-      - '15_to_35', '15-35', '15_35', '15 > x < 35'
-      - '35_plus', '35+', '+35', '35+'
-    """
+    """Checks if plant's height in cm matches selected filter range."""
     if not filter_key:
         return True
+
     key = filter_key.strip().lower()
     if key in ("all", "", "*", "todas", "todos"):
         return True
 
-    h_cm = extract_height_cm(height_str)
-    if h_cm is None:
+    height_cm = extract_height_cm(height_str)
+    if height_cm is None:
         return False
 
-    # Normalize aliases to canonical dictionary key
-    if key in ("less_15", "<15", "< 15", "less_than_15", "menor_15", "<15cm", "< 15 cm"):
-        canonical = "less_15"
-    elif key in ("15_to_35", "15-35", "15_35", "15to35", "15_x_35", "15 > x < 35", "15>x<35"):
-        canonical = "15_to_35"
-    elif key in ("35_plus", "35+", "35plus", "mas_35", "+35", "35+cm", "35+ cm"):
-        canonical = "35_plus"
-    else:
-        canonical = key
-
-    range_cfg = HEIGHT_FILTER_RANGES.get(canonical)
-    if range_cfg and "predicate" in range_cfg:
-        return range_cfg["predicate"](h_cm)
+    if key in ("less_15", "<15", "< 15", "less_than_15", "menor_15"):
+        return height_cm < 15.0
+    if key in ("15_to_35", "15-35", "15_35", "15to35"):
+        return 15.0 <= height_cm < 35.0
+    if key in ("35_plus", "35+", "35plus", "mas_35", "+35"):
+        return height_cm >= 35.0
 
     return True
 
@@ -214,6 +182,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     d["aka"] = d.get("aka") or ""
     d["height"] = d.get("height") or ""
     d["status"] = normalize_status(d.get("status"))
+    d["indxw"] = int(d.get("indxw") or 0)
     try:
         d["photos"] = json.loads(d["photos"]) if d.get("photos") else []
     except Exception:
@@ -222,7 +191,7 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
 
 
 def init_db() -> None:
-    """Initializes the database schema, indexes, and ensures default records."""
+    """Initializes database schema, indexes, and seeds default records."""
     os.makedirs(DB_DIR, exist_ok=True)
     with get_connection() as conn:
         conn.execute("""
@@ -242,18 +211,15 @@ def init_db() -> None:
                 photos TEXT DEFAULT '[]',
                 status TEXT NOT NULL DEFAULT 'OK',
                 comentarios TEXT DEFAULT '',
+                indxw INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        try:
-            conn.execute("ALTER TABLE plants ADD COLUMN aka TEXT DEFAULT '';")
-        except sqlite3.OperationalError:
-            pass
-        try:
-            conn.execute("ALTER TABLE plants ADD COLUMN height TEXT DEFAULT '';")
-        except sqlite3.OperationalError:
-            pass
+        # Ensure indxw column exists on existing databases
+        cols = [r["name"] for r in conn.execute("PRAGMA table_info(plants);").fetchall()]
+        if "indxw" not in cols:
+            conn.execute("ALTER TABLE plants ADD COLUMN indxw INTEGER NOT NULL DEFAULT 0;")
 
         for col in ("species", "status", "location", "aka", "height"):
             conn.execute(f"CREATE INDEX IF NOT EXISTS idx_plants_{col} ON plants({col});")
@@ -263,179 +229,33 @@ def init_db() -> None:
 
 
 def seed_default_data() -> None:
-    """Seeds default curated botanical records into the database."""
-    default_plants = [
-        {
-            "name": "A1",
-            "species": "Ariocarpus kotschoubeyanus",
-            "aka": "estrella",
-            "location": "Invernadero A - Banco 1",
-            "height": "2025-06-15 - 4.8 cm",
-            "registration_date": "2024-03-12",
-            "padres": "Desconocido (Ejemplar Madre Silvestre)",
-            "sowing_cutting_date": "2023-01-10",
-            "graft": "Sin injerto (Raíz propia napiforme)",
-            "last_pruned": "2025-11-04 (Limpieza raíces secundarias)",
-            "last_repotted": "2025-02-18 (Sustrato mineral 80% pómice)",
-            "fertilizante": "2025-06-01 NPK 4-10-15 dilución 25% + Quelato de Hierro",
-            "photos": ["A1_1.webp", "A1_2.webp"],
-            "status": "OK",
-            "comentarios": "Floración rosa magenta observada en otoño. Crecimiento lento pero saludable con tubérculos bien definidos."
-        },
-        {
-            "name": "900",
-            "species": "Lophophora williamsii var. caespitosa",
-            "aka": "golden",
-            "location": "Invernadero A - Banco 3",
-            "height": "2025-08-20 - 7.5 cm",
-            "registration_date": "2024-05-20",
-            "padres": "Clon C-89 x Semilla Autóctona",
-            "sowing_cutting_date": "2023-04-15",
-            "graft": "Sin injerto",
-            "last_pruned": "2025-08-12 (Separación de hijuelos)",
-            "last_repotted": "2025-01-05 (Maceta barro artesanal)",
-            "fertilizante": "2025-05-15 Extracto de algas marinas bioestimulante",
-            "photos": ["900_1.webp"],
-            "status": "OK",
-            "comentarios": "Muestra 14 cabezas compactas. Lana apical densa y sana."
-        },
-        {
-            "name": "A2",
-            "species": "Ariocarpus retusus subsp. trigonus",
-            "aka": "ocaso",
-            "location": "Invernadero A - Banco 1",
-            "height": "2025-10-12 - 12.0 cm",
-            "registration_date": "2024-09-01",
-            "padres": "A1 + 900",
-            "sowing_cutting_date": "2024-06-11",
-            "graft": "Injerto sobre Myrtillocactus geometrizans",
-            "last_pruned": "2025-10-15 (Poda de rebrotes del patrón)",
-            "last_repotted": "2024-11-20 (Trasplante de patrón)",
-            "fertilizante": "2025-07-20 Fertilizante cactus bajo en nitrógeno",
-            "photos": ["A2_1.webp"],
-            "status": "OK",
-            "comentarios": "Cruce experimental exitoso entre A1 y 900. Velocidad de desarrollo acelerada gracias al injerto vigoroso."
-        },
-        {
-            "name": "B12",
-            "species": "Astrophytum asterias cv. Super Kabuto",
-            "aka": "darkRed",
-            "location": "Mesa de Cuarentena Este",
-            "height": "2025-01-14 - 5.2 cm",
-            "registration_date": "2025-01-14",
-            "padres": "SK-White x Star Shape 4",
-            "sowing_cutting_date": "2024-02-01",
-            "graft": "Sin injerto",
-            "last_pruned": "No aplica",
-            "last_repotted": "2025-01-14 (Sustrato esterilizado)",
-            "fertilizante": "Sin fertilizante reciente (Bajo tratamiento fúngico)",
-            "photos": ["B12_1.webp"],
-            "status": "notOK",
-            "comentarios": "Mancha marrón sospechosa en la costilla apical 3. Tratado con oxicloruro de cobre preventivo en cuarentena."
-        },
-        {
-            "name": "K7",
-            "species": "Pachypodium namaquanum",
-            "aka": "halfmens",
-            "location": "Terraza Sur - Sector Árido",
-            "height": "2024-11-05 - 28.5 cm",
-            "registration_date": "2023-11-05",
-            "padres": "Importación Namibia CITES 2021",
-            "sowing_cutting_date": "2022-08-20",
-            "graft": "Sin injerto",
-            "last_pruned": "2024-12-01",
-            "last_repotted": "2024-03-30 (Maceta profunda de gres)",
-            "fertilizante": "2025-04-10 Microelementos y Calcio quelatado",
-            "photos": ["K7_1.webp"],
-            "status": "OK",
-            "comentarios": "Follaje ondulado invernal en desarrollo. Orientación apical hacia el norte respetada."
-        },
-        {
-            "name": "999",
-            "species": "Euphorbia obesa var. crestada",
-            "aka": "cristata",
-            "location": "Laboratorio Clínico Botánico",
-            "height": "2026-01-20 - 9.0 cm",
-            "registration_date": "2025-08-01",
-            "padres": "Desconocido",
-            "sowing_cutting_date": "2025-03-10",
-            "graft": "Injerto sobre Euphorbia canariensis",
-            "last_pruned": "2026-01-20 (Corte de tejido necrosado)",
-            "last_repotted": "2025-08-02",
-            "fertilizante": "Ninguno",
-            "photos": [],
-            "status": "notOK",
-            "comentarios": "Pudrición bacteriana avanzada en la unión del injerto. Aislado para intento de rescate de meristemo superior."
-        },
-        {
-            "name": "C04",
-            "species": "Echinocactus horizonthalonius",
-            "aka": "solNaciente",
-            "location": "Invernadero B - Germinador",
-            "height": "2026-03-15 - 1.8 cm",
-            "registration_date": "2026-03-15",
-            "padres": "Autóctono Coahuila",
-            "sowing_cutting_date": "2026-03-15",
-            "graft": "Sin injerto",
-            "last_pruned": "No aplica",
-            "last_repotted": "2026-03-15",
-            "fertilizante": "Solución nutritiva 10%",
-            "photos": [],
-            "status": "OK",
-            "comentarios": "Plántula joven con espinación incipiente de color rojizo."
-        },
-        {
-            "name": "M08",
-            "species": "Mammillaria luethyi",
-            "aka": "microClon",
-            "location": "Mesa de Cuarentena Este",
-            "height": "2026-07-01 - 3.4 cm",
-            "registration_date": "2026-05-10",
-            "padres": "Clon M-2",
-            "sowing_cutting_date": "2026-05-10",
-            "graft": "Injerto sobre Pereskiopsis",
-            "last_pruned": "2026-07-01",
-            "last_repotted": "2026-05-10",
-            "fertilizante": "Fungicida sistémico preventivo",
-            "photos": [],
-            "status": "notOK",
-            "comentarios": "Injerto joven con clorosis en tubérculos basales. Bajo observación."
-        },
-        {
-            "name": "P40",
-            "species": "Pachycereus pringlei",
-            "aka": "cardon",
-            "location": "Sector Exterior - Desierto",
-            "height": "2025-11-20 - 42.0 cm",
-            "registration_date": "2024-02-10",
-            "padres": "Semilla silvestre Sonora",
-            "sowing_cutting_date": "2020-04-12",
-            "graft": "Sin injerto (Raíz propia)",
-            "last_pruned": "2025-05-10",
-            "last_repotted": "2024-03-15 (Contenedor terracota 50L)",
-            "fertilizante": "2025-06-15 Fertilizante orgánico mineral",
-            "photos": [],
-            "status": "OK",
-            "comentarios": "Ejemplar columnar robusto de 42 cm con espinación densa plateada."
-        }
-    ]
-
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Seeds default curated botanical records from DB/seeds.json if empty."""
     with get_connection() as conn:
-        for p in default_plants:
-            conn.execute("""
-                INSERT OR IGNORE INTO plants (
-                    name, species, aka, location, height, registration_date, padres,
-                    sowing_cutting_date, graft, last_pruned, last_repotted,
-                    fertilizante, photos, status, comentarios, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                p["name"], p["species"], p["aka"], p["location"], p["height"], p["registration_date"],
-                p["padres"], p["sowing_cutting_date"], p["graft"], p["last_pruned"],
-                p["last_repotted"], p["fertilizante"], json.dumps(p["photos"]),
-                p["status"], p["comentarios"], now, now
-            ))
-        conn.commit()
+        if conn.execute("SELECT 1 FROM plants LIMIT 1").fetchone():
+            return
+        if not os.path.exists(SEEDS_FILE):
+            return
+        try:
+            with open(SEEDS_FILE, "r", encoding="utf-8") as f:
+                seeds = json.load(f)
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for p in seeds:
+                conn.execute("""
+                    INSERT OR IGNORE INTO plants (
+                        name, species, aka, location, height, registration_date, padres,
+                        sowing_cutting_date, graft, last_pruned, last_repotted,
+                        fertilizante, photos, status, comentarios, indxw, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    p["name"], p["species"], p.get("aka", ""), p.get("location", ""), p.get("height", ""),
+                    p.get("registration_date", ""), p.get("padres", ""), p.get("sowing_cutting_date", ""),
+                    p.get("graft", ""), p.get("last_pruned", ""), p.get("last_repotted", ""),
+                    p.get("fertilizante", ""), json.dumps(p.get("photos", [])),
+                    p.get("status", "OK"), p.get("comentarios", ""), int(p.get("indxw", 0)), now, now
+                ))
+            conn.commit()
+        except Exception:
+            pass
 
 
 def get_plants(
@@ -445,7 +265,7 @@ def get_plants(
     height_filter: Optional[str] = None,
     sort_by: str = "name"
 ) -> List[Dict[str, Any]]:
-    """Fetches plants with optional search, 2-state status filtering, age filtering, and height filtering."""
+    """Fetches plants with optional search, status, age, and height filtering."""
     with get_connection() as conn:
         query = "SELECT * FROM plants WHERE 1=1"
         params: List[Any] = []
@@ -453,9 +273,8 @@ def get_plants(
         if status_filter:
             s_clean = status_filter.strip().lower()
             if s_clean not in ("all", "", "*"):
-                norm = normalize_status(s_clean)
                 query += " AND status = ?"
-                params.append(norm)
+                params.append(normalize_status(s_clean))
 
         if search_query and search_query.strip():
             sq = f"%{search_query.strip()}%"
@@ -473,22 +292,12 @@ def get_plants(
         rows = conn.execute(query, params).fetchall()
         result = [row_to_dict(r) for r in rows]
 
-        # Biological Age filtering (< 1 year, 1 - 2 years, 3+ years)
         if age_filter and age_filter.strip().lower() not in ("all", "", "*"):
-            a_clean = age_filter.strip().lower()
-            filtered = []
-            for p in result:
-                m = get_plant_age_months(p.get("sowing_cutting_date"), p.get("graft", ""))
-                if m is not None:
-                    if a_clean in ("less_1", "<1", "less_than_1", "menor_1") and m < 12:
-                        filtered.append(p)
-                    elif a_clean in ("1_to_2", "1-2", "1_2", "1to2") and 12 <= m < 36:
-                        filtered.append(p)
-                    elif a_clean in ("3_plus", "3+", "3plus", "mas_3") and m >= 36:
-                        filtered.append(p)
-            result = filtered
+            result = [
+                p for p in result
+                if matches_age_filter(get_plant_age_months(p.get("sowing_cutting_date"), p.get("graft", "")), age_filter)
+            ]
 
-        # Height range filtering (< 15 cm, 15 > x < 35, 35+ cm)
         if height_filter and height_filter.strip().lower() not in ("all", "", "*", "todas", "todos"):
             result = [p for p in result if matches_height_filter(p.get("height"), height_filter)]
 
@@ -515,14 +324,12 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     if not species:
         return False, "La especie botánica o nombre común es obligatoria."
 
-    status = normalize_status(data.get("status"))
-    aka = (data.get("aka") or "").strip()
-    height = (data.get("height") or "").strip()
     photos = data.get("photos", [])
     photos_json = json.dumps(photos) if isinstance(photos, list) else "[]"
-    # Registration date is retained as an internal record
     reg_date = (data.get("registration_date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    indxw_raw = data.get("indxw", 0)
+    indxw_val = 1 if indxw_raw in (1, "1", True, "true", "True", "on") else 0
 
     with get_connection() as conn:
         if conn.execute("SELECT 1 FROM plants WHERE name = ?", (key,)).fetchone():
@@ -532,14 +339,15 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
             INSERT INTO plants (
                 name, species, aka, location, height, registration_date, padres,
                 sowing_cutting_date, graft, last_pruned, last_repotted,
-                fertilizante, photos, status, comentarios, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                fertilizante, photos, status, comentarios, indxw, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            key, species, aka, (data.get("location") or "").strip(), height, reg_date,
-            (data.get("padres") or "").strip(), (data.get("sowing_cutting_date") or "").strip(),
-            (data.get("graft") or "").strip(), (data.get("last_pruned") or "").strip(),
-            (data.get("last_repotted") or "").strip(), (data.get("fertilizante") or "").strip(),
-            photos_json, status, (data.get("comentarios") or "").strip(), now, now
+            key, species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
+            (data.get("height") or "").strip(), reg_date, (data.get("padres") or "").strip(),
+            (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
+            (data.get("last_pruned") or "").strip(), (data.get("last_repotted") or "").strip(),
+            (data.get("fertilizante") or "").strip(), photos_json,
+            normalize_status(data.get("status")), (data.get("comentarios") or "").strip(), indxw_val, now, now
         ))
         conn.commit()
 
@@ -556,32 +364,33 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
     if not species:
         return False, "La especie botánica o nombre común es obligatoria."
 
-    status = normalize_status(data.get("status"))
-    aka = (data.get("aka") or "").strip()
-    height = (data.get("height") or "").strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     with get_connection() as conn:
-        existing = conn.execute("SELECT registration_date FROM plants WHERE name = ?", (key,)).fetchone()
+        existing = conn.execute("SELECT registration_date, indxw FROM plants WHERE name = ?", (key,)).fetchone()
         if not existing:
             return False, f"Planta '{key}' no encontrada."
 
-        # Keep existing registration_date as internal record unless provided
         reg_date = (data.get("registration_date") or "").strip() or (existing["registration_date"] or "")
+
+        if "indxw" in data:
+            indxw_val = 1 if data["indxw"] in (1, "1", True, "true", "True", "on") else 0
+        else:
+            indxw_val = int(existing["indxw"] if "indxw" in existing.keys() else 0)
 
         conn.execute("""
             UPDATE plants SET
                 species = ?, aka = ?, location = ?, height = ?, registration_date = ?, padres = ?,
                 sowing_cutting_date = ?, graft = ?, last_pruned = ?, last_repotted = ?,
-                fertilizante = ?, status = ?, comentarios = ?, updated_at = ?
+                fertilizante = ?, status = ?, comentarios = ?, indxw = ?, updated_at = ?
             WHERE name = ?
         """, (
-            species, aka, (data.get("location") or "").strip(), height,
-            reg_date, (data.get("padres") or "").strip(),
+            species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
+            (data.get("height") or "").strip(), reg_date, (data.get("padres") or "").strip(),
             (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
             (data.get("last_pruned") or "").strip(), (data.get("last_repotted") or "").strip(),
-            (data.get("fertilizante") or "").strip(), status, (data.get("comentarios") or "").strip(),
-            now, key
+            (data.get("fertilizante") or "").strip(), normalize_status(data.get("status")),
+            (data.get("comentarios") or "").strip(), indxw_val, now, key
         ))
         conn.commit()
 
@@ -624,14 +433,12 @@ def bulk_delete_plants(keys: List[str]) -> Tuple[int, List[str]]:
     return deleted_count, all_photos
 
 
-def add_photo_to_plant(name: str, filename: str) -> bool:
-    """Appends a new photo filename to the plant's photo list."""
+def _update_plant_photos(name: str, modifier_fn) -> bool:
+    """Helper to update a plant's photos list safely in a transaction."""
     plant = get_plant(name)
     if not plant:
         return False
-    photos = plant.get("photos", [])
-    if filename not in photos:
-        photos.append(filename)
+    photos = modifier_fn(plant.get("photos", []))
     with get_connection() as conn:
         conn.execute(
             "UPDATE plants SET photos = ?, updated_at = ? WHERE name = ?",
@@ -639,21 +446,16 @@ def add_photo_to_plant(name: str, filename: str) -> bool:
         )
         conn.commit()
     return True
+
+
+def add_photo_to_plant(name: str, filename: str) -> bool:
+    """Appends a new photo filename to the plant's photo list."""
+    return _update_plant_photos(name, lambda ph: ph if filename in ph else ph + [filename])
 
 
 def remove_photo_from_plant(name: str, filename: str) -> bool:
     """Removes a photo filename from the plant's photo list."""
-    plant = get_plant(name)
-    if not plant:
-        return False
-    photos = [p for p in plant.get("photos", []) if p != filename]
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE plants SET photos = ?, updated_at = ? WHERE name = ?",
-            (json.dumps(photos), datetime.now().strftime("%Y-%m-%d %H:%M:%S"), plant["name"])
-        )
-        conn.commit()
-    return True
+    return _update_plant_photos(name, lambda ph: [p for p in ph if p != filename])
 
 
 def get_all_keys() -> List[str]:
@@ -663,81 +465,129 @@ def get_all_keys() -> List[str]:
         return [r["name"] for r in cursor.fetchall()]
 
 
+def get_inventory_stats() -> Dict[str, Any]:
+    """Detailed inventory breakdown for catalog and admin modules."""
+    with get_connection() as conn:
+        rows = conn.execute("SELECT name, status, location, graft, photos, aka FROM plants").fetchall()
+
+    stats: Dict[str, Any] = {
+        "total": len(rows),
+        "status_counts": {"OK": 0, "notOK": 0},
+        "with_photos": 0,
+        "without_photos": 0,
+        "with_graft": 0,
+        "own_roots": 0,
+        "location_counts": {},
+        "total_photos": 0,
+        "with_alias": 0,
+    }
+
+    for r in rows:
+        st = normalize_status(r["status"])
+        stats["status_counts"][st] += 1
+        if r["aka"]:
+            stats["with_alias"] += 1
+
+        photos = []
+        try:
+            photos = json.loads(r["photos"]) if r["photos"] else []
+        except Exception:
+            pass
+
+        n_ph = len(photos)
+        stats["total_photos"] += n_ph
+        if n_ph > 0:
+            stats["with_photos"] += 1
+        else:
+            stats["without_photos"] += 1
+
+        graft_val = (r["graft"] or "").strip().lower()
+        if graft_val and "sin injerto" not in graft_val and graft_val not in ("no", "ninguno"):
+            stats["with_graft"] += 1
+        else:
+            stats["own_roots"] += 1
+
+        loc = (r["location"] or "Sin Ubicación").strip()
+        stats["location_counts"][loc] = stats["location_counts"].get(loc, 0) + 1
+
+    return stats
+
+
 def get_stats() -> Dict[str, Any]:
     """Computes overall catalog statistics."""
-    with get_connection() as conn:
-        rows = conn.execute("SELECT status, location, photos, aka FROM plants").fetchall()
-        total = len(rows)
-        status_counts = {"OK": 0, "notOK": 0}
-        locations = set()
-        total_photos = 0
-        with_alias = 0
+    inv = get_inventory_stats()
+    return {
+        "total": inv["total"],
+        "status_counts": inv["status_counts"],
+        "locations_count": len(inv["location_counts"]),
+        "total_photos": inv["total_photos"],
+        "with_alias": inv.get("with_alias", 0),
+    }
 
-        for r in rows:
-            st = normalize_status(r["status"])
-            status_counts[st] = status_counts.get(st, 0) + 1
-            if r["location"]:
-                locations.add(r["location"])
-            if r["aka"]:
-                with_alias += 1
+
+def backup_db(custom_target_path: Optional[str] = None) -> str:
+    """
+    Safely creates a consistent snapshot of the SQLite database using the native
+    online backup API (non-blocking, zero lock contention).
+    Retains the most recent 14 snapshots (~7 days at 2 backups/day).
+    """
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
+    if custom_target_path:
+        target_file = custom_target_path
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target_file = os.path.join(BACKUPS_DIR, f"plantation_backup_{timestamp}.db")
+
+    with get_connection() as src_conn:
+        dest_conn = sqlite3.connect(target_file)
+        with dest_conn:
+            src_conn.backup(dest_conn)
+        dest_conn.close()
+
+    # Prune old automated backups (keep last 14)
+    try:
+        backups = sorted([
+            os.path.join(BACKUPS_DIR, f)
+            for f in os.listdir(BACKUPS_DIR)
+            if f.startswith("plantation_backup_") and f.endswith(".db")
+        ])
+        if len(backups) > 14:
+            for old_bk in backups[:-14]:
+                try:
+                    os.remove(old_bk)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
+    return target_file
+
+
+_scheduler_started = False
+
+
+def start_backup_scheduler(interval_seconds: int = 43200) -> None:
+    """
+    Spawns a background daemon thread that executes an online database backup every 12 hours (43200s).
+    Safe to call multiple times (idempotent).
+    """
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    _scheduler_started = True
+
+    import threading
+    import time
+
+    def _backup_loop():
+        # Brief pause on boot before taking the first initial snapshot
+        time.sleep(10)
+        while True:
             try:
-                plist = json.loads(r["photos"]) if r["photos"] else []
-                total_photos += len(plist)
-            except Exception:
-                pass
+                backup_db()
+            except Exception as e:
+                print(f"[BACKUP] Error running scheduled backup: {e}")
+            time.sleep(interval_seconds)
 
-        return {
-            "total": total,
-            "status_counts": status_counts,
-            "locations_count": len(locations),
-            "total_photos": total_photos,
-            "with_alias": with_alias
-        }
-
-
-def get_inventory_stats() -> Dict[str, Any]:
-    """Detailed inventory breakdown for the Admin inventory module."""
-    with get_connection() as conn:
-        rows = conn.execute("SELECT name, species, aka, status, location, graft, photos FROM plants").fetchall()
-        total = len(rows)
-        status_counts = {"OK": 0, "notOK": 0}
-        with_photos, without_photos = 0, 0
-        with_graft, own_roots = 0, 0
-        location_counts: Dict[str, int] = {}
-        total_photos = 0
-
-        for r in rows:
-            st = normalize_status(r["status"])
-            status_counts[st] = status_counts.get(st, 0) + 1
-
-            p_list = []
-            try:
-                p_list = json.loads(r["photos"]) if r["photos"] else []
-            except Exception:
-                pass
-            p_len = len(p_list)
-            total_photos += p_len
-            if p_len > 0:
-                with_photos += 1
-            else:
-                without_photos += 1
-
-            graft_str = (r["graft"] or "").strip().lower()
-            if graft_str and "sin injerto" not in graft_str and graft_str not in ("no", "ninguno"):
-                with_graft += 1
-            else:
-                own_roots += 1
-
-            loc = (r["location"] or "Sin Ubicación").strip()
-            location_counts[loc] = location_counts.get(loc, 0) + 1
-
-        return {
-            "total": total,
-            "status_counts": status_counts,
-            "with_photos": with_photos,
-            "without_photos": without_photos,
-            "with_graft": with_graft,
-            "own_roots": own_roots,
-            "location_counts": location_counts,
-            "total_photos": total_photos
-        }
+    thread = threading.Thread(target=_backup_loop, daemon=True, name="sqlite-backup-scheduler")
+    thread.start()

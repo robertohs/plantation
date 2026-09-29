@@ -77,6 +77,37 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
         </tr>
     """
 
+    stat_cards = [
+        (inv['total'], "EJEMPLARES TOTALES", "var(--red-crimson)"),
+        (sc.get('OK', 0), "SALUDABLES (● OK)", "var(--green-sage)"),
+        (sc.get('notOK', 0), "ENFERMOS / CUARENTENA (● notOK)", "#ef4444"),
+        (f"{inv['with_photos']} <span style='font-size: 12px; color: var(--text-dim);'>({inv['total_photos']} fotos)</span>", "CON REGISTRO FOTO", "var(--blue-sky)"),
+        (inv['without_photos'], "SIN FOTOGRAFÍA", "var(--red-crimson)" if inv['without_photos'] > 0 else "var(--text-sub)"),
+        (f"{inv['with_graft']} <span style='font-size: 12px; color: var(--text-dim);'>({inv['own_roots']} r. propia)</span>", "INJERTADOS", "var(--text-main)"),
+        (len(inv['location_counts']), "UBICACIONES ACTIVAS", "var(--green-sage)"),
+    ]
+    stats_grid_html = "\n".join(
+        f"""<div class="inventory-stat-card">
+            <div class="inventory-stat-val" style="color: {col};">{val}</div>
+            <div class="inventory-stat-lbl">{lbl}</div>
+        </div>"""
+        for val, lbl, col in stat_cards
+    )
+
+    tab_defs = [
+        ("ALL", f"TODOS ({inv['total']})"),
+        ("NO_PHOTOS", f"SIN FOTO ({inv['without_photos']})"),
+        ("GRAFTED", f"INJERTOS ({inv['with_graft']})"),
+        ("ILL", f"EN CUARENTENA ({sc.get('notOK', 0)})"),
+    ]
+    tabs_html = "\n".join(
+        f"""<button class="inv-tab-btn {'active' if filter_tag == tag else ''}"
+                    hx-get="/admin/filter?tab={tag}"
+                    hx-target="#admin-panel"
+                    hx-swap="outerHTML">{label}</button>"""
+        for tag, label in tab_defs
+    )
+
     return f"""
     <div class="admin-tray" id="admin-panel">
         <div class="admin-header">
@@ -93,63 +124,13 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
         </div>
 
         <div class="inventory-stats-grid">
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--red-crimson);">{inv['total']}</div>
-                <div class="inventory-stat-lbl">EJEMPLARES TOTALES</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--green-sage);">{sc.get('OK', 0)}</div>
-                <div class="inventory-stat-lbl">SALUDABLES (● OK)</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: #ef4444;">{sc.get('notOK', 0)}</div>
-                <div class="inventory-stat-lbl" style="color: #ef4444;">ENFERMOS / CUARENTENA (● notOK)</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--blue-sky);">{inv['with_photos']} <span style="font-size: 12px; color: var(--text-dim);">({inv['total_photos']} fotos)</span></div>
-                <div class="inventory-stat-lbl">CON REGISTRO FOTO</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: { 'var(--red-crimson)' if inv['without_photos'] > 0 else 'var(--text-sub)' };">{inv['without_photos']}</div>
-                <div class="inventory-stat-lbl">SIN FOTOGRAFÍA</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--text-main);">{inv['with_graft']} <span style="font-size: 12px; color: var(--text-dim);">({inv['own_roots']} r. propia)</span></div>
-                <div class="inventory-stat-lbl">INJERTADOS</div>
-            </div>
-            <div class="inventory-stat-card">
-                <div class="inventory-stat-val" style="color: var(--green-sage);">{len(inv['location_counts'])}</div>
-                <div class="inventory-stat-lbl">UBICACIONES ACTIVAS</div>
-            </div>
+            {stats_grid_html}
         </div>
 
         <div class="inventory-toolbar">
             <div class="inventory-filter-tabs">
                 <span style="font-size: 11px; color: var(--text-dim); line-height: 24px; margin-right: 4px;">FILTRO TABLA:</span>
-                <button class="inv-tab-btn {'active' if filter_tag == 'ALL' else ''}"
-                        hx-get="/admin/filter?tab=ALL"
-                        hx-target="#admin-panel"
-                        hx-swap="outerHTML">
-                    TODOS ({inv['total']})
-                </button>
-                <button class="inv-tab-btn {'active' if filter_tag == 'NO_PHOTOS' else ''}"
-                        hx-get="/admin/filter?tab=NO_PHOTOS"
-                        hx-target="#admin-panel"
-                        hx-swap="outerHTML">
-                    SIN FOTO ({inv['without_photos']})
-                </button>
-                <button class="inv-tab-btn {'active' if filter_tag == 'GRAFTED' else ''}"
-                        hx-get="/admin/filter?tab=GRAFTED"
-                        hx-target="#admin-panel"
-                        hx-swap="outerHTML">
-                    INJERTOS ({inv['with_graft']})
-                </button>
-                <button class="inv-tab-btn {'active' if filter_tag == 'ILL' else ''}"
-                        hx-get="/admin/filter?tab=ILL"
-                        hx-target="#admin-panel"
-                        hx-swap="outerHTML">
-                    EN CUARENTENA ({sc.get('notOK', 0)})
-                </button>
+                {tabs_html}
             </div>
 
             <div style="display: flex; gap: 8px;">
@@ -164,6 +145,12 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                    download="inventario_plantation.csv"
                    title="Exportar inventario estructurado a archivo CSV">
                     ⭳ [EXPORTAR CSV]
+                </a>
+                <a class="btn btn-sm btn-green"
+                   href="/admin/backup.db"
+                   download
+                   title="Descargar copia de seguridad instantánea de la base de datos SQLite (.db)">
+                    💾 [BACKUP DB]
                 </a>
             </div>
         </div>

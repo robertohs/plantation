@@ -31,6 +31,9 @@ IMAGES_DIR = os.path.join(BASE_DIR, "Images")
 # Initialize database schema and default seeds
 db.init_db()
 
+# Start background backup scheduler (every 12 hours)
+db.start_backup_scheduler(interval_seconds=43200)
+
 # Ensure images directory and sample illustrations
 img_conv.ensure_images_dir()
 img_conv.generate_seed_photos_if_missing()

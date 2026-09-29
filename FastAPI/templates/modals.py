@@ -34,6 +34,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     repotted_val = p.get("last_repotted", "")
     fert_val = p.get("fertilizante", "")
     comm_val = p.get("comentarios", "")
+    indxw_val = int(p.get("indxw", 0))
 
     existing_keys = db.get_all_keys()
     keys_datalist = "".join([f'<option value="{k}">' for k in existing_keys if k != name_val])
@@ -59,6 +60,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     """
 
     return f"""
+        <input type="hidden" id="inp-indxw" name="indxw" value="{indxw_val}" />
         <datalist id="existing-plant-keys">
             {keys_datalist}
         </datalist>
@@ -189,7 +191,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group full">
-                <label class="form-label" for="inp-comentarios">NOTAS, FLORACIÓN & OBSERVACIONES CLÍNICAS</label>
+                <label class="form-label" for="inp-comentarios">NOTAS</label>
                 <textarea id="inp-comentarios"
                           name="comentarios"
                           class="form-textarea"
@@ -227,6 +229,27 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     aka_val = (plant.get("aka") or "").strip()
     aka_badge = f'<strong style="color: var(--peach-orange); font-weight: 700;">"{aka_val}"</strong>' if aka_val else '<span style="color: var(--text-dim);">—</span>'
 
+    info_fields = [
+        ("Alias", aka_val or "—", False),
+        ("Altura (Fecha - CM)", plant.get("height") or "—", False),
+        ("Edad", age_detailed, False),
+        ("Fecha Siembra / Esquejado", plant.get("sowing_cutting_date") or "—", False),
+        ("Linaje (Padres)", plant.get("padres") or "Desconocido", False),
+        ("Injerto", plant.get("graft") or "Sin injerto (Raíz propia)", False),
+        ("Última Poda", plant.get("last_pruned") or "—", False),
+        ("Último Trasplante", plant.get("last_repotted") or "—", False),
+        ("Fertilización & Tratamientos Aplicados", plant.get("fertilizante") or "Sin tratamientos registrados", True),
+        ("Comentarios", plant.get("comentarios") or "Sin observaciones", True),
+    ]
+
+    fields_html = "\n".join(
+        f"""<div class="form-group{' full' if is_full else ''}">
+            <span class="form-label">{lbl}</span>
+            <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);{' min-height: 50px; white-space: pre-wrap;' if is_full else ' font-weight: 600;' if lbl in ('Alias', 'Altura (Fecha - CM)', 'Edad') else ''}">{val}</div>
+        </div>"""
+        for lbl, val, is_full in info_fields
+    )
+
     return f"""
     <div class="modal-overlay" id="plant-dossier-modal">
         <div class="modal-dialog">
@@ -258,46 +281,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                 </div>
 
                 <div class="form-grid">
-                    <div class="form-group">
-                        <span class="form-label">Alias</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{aka_val or '—'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Altura (Fecha - CM)</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{plant.get('height') or '—'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Edad</span>
-                        <div class="form-input" style="background: var(--bg-mantle); font-weight: 600; color: var(--info-field-color);">{age_detailed}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Fecha Siembra / Esquejado</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('sowing_cutting_date') or '—'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Linaje (Padres)</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); word-break: break-word;">{plant.get('padres') or 'Desconocido'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Injerto</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); word-break: break-word;">{plant.get('graft') or 'Sin injerto (Raíz propia)'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Última Poda</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('last_pruned') or '—'}</div>
-                    </div>
-                    <div class="form-group">
-                        <span class="form-label">Último Trasplante</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);">{plant.get('last_repotted') or '—'}</div>
-                    </div>
-                    <div class="form-group full">
-                        <span class="form-label">Fertilización & Tratamientos Aplicados</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); min-height: 50px; white-space: pre-wrap;">{plant.get('fertilizante') or 'Sin tratamientos registrados'}</div>
-                    </div>
-                    <div class="form-group full">
-                        <span class="form-label">Comentarios & Observaciones Clínicas</span>
-                        <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color); min-height: 50px; white-space: pre-wrap;">{plant.get('comentarios') or 'Sin observaciones'}</div>
-                    </div>
+                    {fields_html}
                 </div>
 
                 <div>

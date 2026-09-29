@@ -1,11 +1,12 @@
 {
   "name": "plantation",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Plantation - Plant Logger & Botanical Dossier",
   "scripts": {
     "dev": "python3 server.py --host 0.0.0.0 --port 3000",
     "start": "python3 server.py --host 0.0.0.0 --port 3000",
-    "build": "echo 'Build successful'"
+    "build": "echo 'Build successful'",
+    "lint": "python3 -m py_compile server.py db.py img_conv.py pdf_gen.py stats.py FastAPI/fapi.py FastAPI/templates/admin.py FastAPI/templates/components.py FastAPI/templates/layout.py FastAPI/templates/modals.py"
   }
 }
