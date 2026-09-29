@@ -84,6 +84,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 <button class="btn"
                         id="admin-nav-btn"
                         hx-get="/admin/toggle"
+                        hx-vals='js:{{is_open: document.getElementById("admin-panel") !== null}}'
                         hx-target="#admin-container"
                         hx-swap="innerHTML"
                         title="Administración"

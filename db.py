@@ -24,7 +24,6 @@ def get_connection() -> sqlite3.Connection:
     os.makedirs(DB_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=15.0)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA busy_timeout = 10000;")
     conn.execute("PRAGMA foreign_keys = ON;")
@@ -194,6 +193,7 @@ def init_db() -> None:
     """Initializes database schema, indexes, and seeds default records."""
     os.makedirs(DB_DIR, exist_ok=True)
     with get_connection() as conn:
+        conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS plants (
                 name TEXT PRIMARY KEY,
@@ -568,7 +568,7 @@ _scheduler_started = False
 
 def start_backup_scheduler(interval_seconds: int = 43200) -> None:
     """
-    Spawns a background daemon thread that executes an online database backup every 12 hours (43200s).
+    Spawns a background daemon thread that executes an online database backup periodically (default: 12h / 43200s).
     Safe to call multiple times (idempotent).
     """
     global _scheduler_started
@@ -584,10 +584,13 @@ def start_backup_scheduler(interval_seconds: int = 43200) -> None:
         time.sleep(10)
         while True:
             try:
-                backup_db()
+                bk_path = backup_db()
+                print(f"[BACKUP] Periodic database snapshot created: {bk_path}")
             except Exception as e:
                 print(f"[BACKUP] Error running scheduled backup: {e}")
             time.sleep(interval_seconds)
 
     thread = threading.Thread(target=_backup_loop, daemon=True, name="sqlite-backup-scheduler")
     thread.start()
+
+

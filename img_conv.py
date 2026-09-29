@@ -74,7 +74,9 @@ def validate_and_save_photo(
     if len(file_bytes) == 0:
         return False, "", "El archivo de imagen está vacío."
 
-    # 2. Image integrity verification
+    # 2. Image integrity verification & processing
+    img_buffer = None
+    img = None
     try:
         img_buffer = io.BytesIO(file_bytes)
         img = Image.open(img_buffer)
@@ -82,13 +84,9 @@ def validate_and_save_photo(
         # Re-open after verify() because verify() exhausts file pointer
         img_buffer.seek(0)
         img = Image.open(img_buffer)
-    except Exception as e:
-        return False, "", f"Formato de imagen inválido o corrupto: {str(e)}"
 
-    # 3. Normalization (convert to RGB if RGBA/P/CMYK for AVIF compatibility)
-    try:
+        # 3. Normalization (convert to RGB if RGBA/P/CMYK for compatibility)
         if img.mode in ("RGBA", "LA"):
-            # Maintain alpha transparency or convert
             pass
         elif img.mode != "RGB":
             img = img.convert("RGB")
@@ -100,14 +98,11 @@ def validate_and_save_photo(
 
         # 4. Save to optimized WebP format with universal browser compatibility
         saved_filename = ""
-        saved = False
-
         try:
             target_filename = get_next_photo_filename(key, "webp")
             target_path = os.path.join(IMAGES_DIR, target_filename)
             img.save(target_path, "WEBP", quality=88)
             saved_filename = target_filename
-            saved = True
         except Exception:
             # Fallback to standard JPEG if WEBP fails
             try:
@@ -116,7 +111,6 @@ def validate_and_save_photo(
                 rgb_img = img.convert("RGB") if img.mode != "RGB" else img
                 rgb_img.save(target_path, "JPEG", quality=90)
                 saved_filename = target_filename
-                saved = True
             except Exception as e2:
                 return False, "", f"Error al guardar la imagen optimizada: {str(e2)}"
 
@@ -124,6 +118,17 @@ def validate_and_save_photo(
 
     except Exception as e:
         return False, "", f"Error al procesar la imagen: {str(e)}"
+    finally:
+        if img is not None:
+            try:
+                img.close()
+            except Exception:
+                pass
+        if img_buffer is not None:
+            try:
+                img_buffer.close()
+            except Exception:
+                pass
 
 
 def delete_photo_file(filename: str) -> bool:
@@ -203,7 +208,3 @@ def generate_seed_photos_if_missing() -> None:
                 img.save(path, "WEBP", quality=90)
             except Exception:
                 pass
-
-
-# Ensure seed photos on module load
-generate_seed_photos_if_missing()

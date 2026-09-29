@@ -30,13 +30,23 @@ from .templates.modals import (
 )
 from .templates.admin import render_admin_panel_content
 from .templates.layout import render_index_html
+from .templates.dossier import render_printable_dossier_html
 import stats
 
 router = APIRouter()
 router.include_router(stats.router)
 
-# In-memory admin tray state
-admin_state = {"open": False}
+
+def is_admin_open(request: Request) -> bool:
+    """Stateless check: verifies if admin tray is open for this client via cookie."""
+    return request.cookies.get("plantation_admin") == "1"
+
+
+def get_oob_admin(request: Request) -> str:
+    """Returns out-of-band admin tray update if currently open for this client."""
+    if is_admin_open(request):
+        return f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>'
+    return ""
 
 
 # ==============================================================================
@@ -47,7 +57,6 @@ admin_state = {"open": False}
 def index_view(request: Request):
     """Main application shell."""
     plants = db.get_plants()
-    admin_state["open"] = False
     return HTMLResponse(render_index_html(plants))
 
 
@@ -147,6 +156,7 @@ def view_plant_modal(name: str):
 
 @router.post("/plants", response_class=HTMLResponse)
 async def create_plant_submit(
+    request: Request,
     name: str = Form(...),
     species: str = Form(...),
     aka: str = Form(""),
@@ -238,7 +248,7 @@ async def create_plant_submit(
     plants_grid = render_plants_grid(plants)
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
-    admin_oob = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    admin_oob = get_oob_admin(request)
 
     return HTMLResponse(plants_grid + stats_bar + close_modal_oob + admin_oob)
 
@@ -254,6 +264,7 @@ def edit_plant_modal(name: str):
 
 @router.post("/plants/{name}/edit", response_class=HTMLResponse)
 async def update_plant_submit(
+    request: Request,
     name: str,
     species: str = Form(...),
     aka: str = Form(""),
@@ -323,15 +334,18 @@ async def update_plant_submit(
     if not updated_plant:
         return HTMLResponse("<div class='alert-box alert-error'>Error al recuperar ejemplar.</div>", status_code=500)
 
-    modal_content = render_view_plant_modal_content(updated_plant, alert_msg="Cambios guardados exitosamente.")
+    # When saving changes in editar datos, take user back to the main page (close the modal)
+    # and update the plant card, stats bar, and admin tray (if open) on the main page via OOB swaps
+    close_modal = ""
     oob_card = render_card_html(updated_plant, oob=True)
-    oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+    oob_admin = get_oob_admin(request)
 
-    return HTMLResponse(modal_content + oob_card + oob_admin)
+    return HTMLResponse(close_modal + oob_card + oob_stats + oob_admin)
 
 
 @router.delete("/plants/{name}", response_class=HTMLResponse)
-def delete_plant_endpoint(name: str):
+def delete_plant_endpoint(request: Request, name: str):
     """Deletes a plant and removes its photo files from disk."""
     success, photos = db.delete_plant(name)
     if success and photos:
@@ -340,7 +354,7 @@ def delete_plant_endpoint(name: str):
     plants = db.get_plants()
     grid_html = render_plants_grid(plants)
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
-    admin_oob = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    admin_oob = get_oob_admin(request)
 
     return HTMLResponse(grid_html + close_modal_oob + admin_oob)
 
@@ -351,6 +365,7 @@ def delete_plant_endpoint(name: str):
 
 @router.post("/plants/{name}/photos", response_class=HTMLResponse)
 async def upload_individual_plant_photo(
+    request: Request,
     name: str,
     photo: UploadFile = File(...),
     source: str = Query("edit")
@@ -377,7 +392,7 @@ async def upload_individual_plant_photo(
     target_wrapper = "#edit-plant-photos-wrapper" if is_edit else "#plant-photos-wrapper"
     photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
     oob_card = render_card_html(updated_plant, oob=True)
-    oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    oob_admin = get_oob_admin(request)
     oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
     oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
@@ -393,7 +408,7 @@ async def upload_individual_plant_photo(
 
 @router.delete("/plants/{name}/photos/{filename:path}", response_class=HTMLResponse)
 @router.post("/plants/{name}/photos/{filename:path}/delete", response_class=HTMLResponse)
-def remove_plant_photo(name: str, filename: str, source: str = Query("edit")):
+def remove_plant_photo(request: Request, name: str, filename: str, source: str = Query("edit")):
     """Removes a photo from plant record and purges file from disk."""
     key = db.clean_key(name)
     db.remove_photo_from_plant(key, filename)
@@ -406,7 +421,7 @@ def remove_plant_photo(name: str, filename: str, source: str = Query("edit")):
     photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
 
     oob_card = render_card_html(plant, oob=True)
-    oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
+    oob_admin = get_oob_admin(request)
     oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
     oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
@@ -427,26 +442,32 @@ def remove_plant_photo(name: str, filename: str, source: str = Query("edit")):
 # ==============================================================================
 
 @router.get("/admin/toggle", response_class=HTMLResponse)
-def admin_toggle():
-    """Toggles visibility of the admin tray."""
-    admin_state["open"] = not admin_state.get("open", False)
-    if admin_state["open"]:
-        return HTMLResponse(render_admin_panel_content())
-    return HTMLResponse("")
+def admin_toggle(request: Request, is_open: Optional[str] = Query(None)):
+    """Toggles visibility of the admin tray statelessly based on client request."""
+    currently_open = (is_open == "true" or is_open == "1") if is_open is not None else is_admin_open(request)
+    if not currently_open:
+        resp = HTMLResponse(render_admin_panel_content())
+        resp.set_cookie("plantation_admin", "1", max_age=86400, httponly=False)
+        return resp
+    resp = HTMLResponse("")
+    resp.set_cookie("plantation_admin", "0", max_age=86400, httponly=False)
+    return resp
 
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_open():
     """Opens admin panel."""
-    admin_state["open"] = True
-    return HTMLResponse(render_admin_panel_content())
+    resp = HTMLResponse(render_admin_panel_content())
+    resp.set_cookie("plantation_admin", "1", max_age=86400, httponly=False)
+    return resp
 
 
 @router.get("/admin/close", response_class=HTMLResponse)
 def admin_close():
     """Closes admin panel."""
-    admin_state["open"] = False
-    return HTMLResponse("")
+    resp = HTMLResponse("")
+    resp.set_cookie("plantation_admin", "0", max_age=86400, httponly=False)
+    return resp
 
 
 @router.get("/admin/filter", response_class=HTMLResponse)
@@ -618,3 +639,13 @@ def view_printable_dossier(name: str):
     if not plant:
         raise HTTPException(status_code=404, detail="Ejemplar botánico no encontrado")
     return RedirectResponse(url=f"/pdf/plant/{name}", status_code=302)
+
+
+@router.get("/plants/{name}/print", response_class=HTMLResponse)
+@router.get("/plants/{name}/dossier/html", response_class=HTMLResponse)
+def view_printable_dossier_html(name: str):
+    """Printable standalone HTML technical dossier."""
+    plant = db.get_plant(name)
+    if not plant:
+        raise HTTPException(status_code=404, detail="Ejemplar botánico no encontrado")
+    return HTMLResponse(render_printable_dossier_html(plant))
