@@ -38,18 +38,23 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         </a>
         <div class="nav-actions">
             <button class="btn btn-red"
+                    id="new-plant-btn"
                     hx-get="/plants/modal/new"
                     hx-target="#modal-container"
-                    hx-swap="innerHTML">
-                + [NUEVO EJEMPLAR]
+                    hx-swap="innerHTML"
+                    title="Nuevo Ejemplar"
+                    aria-label="Nuevo Ejemplar">
+                <span style="font-size: 16px; font-weight: bold; line-height: 1; display: inline-flex; align-items: center; justify-content: center;">+</span>
             </button>
             <div id="admin-nav-slot">
                 <button class="btn"
                         id="admin-nav-btn"
                         hx-get="/admin/toggle"
                         hx-target="#admin-container"
-                        hx-swap="innerHTML">
-                    ⚙ [ADMINISTRACIÓN]
+                        hx-swap="innerHTML"
+                        title="Administración"
+                        aria-label="Administración">
+                    <span style="font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;">⚙</span>
                 </button>
             </div>
             <div class="theme-dropdown-container" id="theme-switcher-container">
