@@ -6,14 +6,17 @@ Consolidates View, Create, and Edit modals, eliminating duplicate form inputs.
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import db
-from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH, render_photo_item_html
+from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH, render_photo_item_html, render_editable_photo_item_html
 
 
 def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = False) -> str:
     """Consolidated form fields generator for both New and Edit plant modals."""
+    now_str = datetime.now().strftime("%Y-%m-%d")
     p = plant or {}
     name_val = p.get("name", "")
     species_val = p.get("species", "")
+    if not is_edit and not species_val:
+        species_val = "Adenium obesum"
     aka_val = p.get("aka", "")
     loc_val = p.get("location", "")
     status_val = db.normalize_status(p.get("status"))
@@ -27,7 +30,13 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
         return ""
 
     height_val = p.get("height", "")
+    if not is_edit and not height_val:
+        height_val = f"{now_str} - 0 cm"
+
     sow_val = _sanitize_date(p.get("sowing_cutting_date"))
+    if not is_edit and not sow_val:
+        sow_val = now_str
+
     graft_val = p.get("graft", "")
     padres_val = p.get("padres", "")
     pruned_val = p.get("last_pruned", "")
@@ -56,7 +65,12 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                required
                pattern="[A-Za-z0-9_-]+"
                maxlength="20"
-               autocomplete="off" />
+               autocomplete="off"
+               hx-get="/plants/validate-key"
+               hx-trigger="input changed delay:250ms, blur"
+               hx-target="#key-validation-feedback"
+               hx-swap="innerHTML" />
+        <div id="key-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;"></div>
     """
 
     return f"""
@@ -211,10 +225,10 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     plant_name = plant.get("name", "")
     _, age_detailed = db.calculate_plant_age(plant.get("sowing_cutting_date"), plant.get("graft", ""))
 
-    photo_items = [render_photo_item_html(plant_name, ph) for ph in photos]
+    photo_items = [render_photo_item_html(plant_name, ph, allow_delete=False) for ph in photos]
     photos_html = "".join(photo_items) if photo_items else """
-        <div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">
-            No hay fotografías adjuntas para este ejemplar. Puede arrastrar o seleccionar imágenes abajo.
+        <div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 12px 0; text-align: center;">
+            No hay fotografías adjuntas para este ejemplar. Para añadir o gestionar fotos, pulsa [EDITAR DATOS].
         </div>
     """
 
@@ -287,31 +301,8 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>
-                        <span style="font-size: 10.5px; color: var(--text-dim);">Formato auto-convertido a AVIF/WebP (&lt;KEY&gt;_&lt;n&gt;)</span>
+                        <span style="font-size: 10.5px; color: var(--text-dim);">Haz clic en cualquier imagen para abrirla en alta resolución</span>
                     </div>
-
-                    <form hx-post="/plants/{plant.get('name')}/photos"
-                          hx-target="#plant-photos-wrapper"
-                          hx-swap="innerHTML"
-                          hx-encoding="multipart/form-data"
-                          id="individual-photo-form"
-                          style="margin-bottom: 14px;">
-                        <div class="drop-zone"
-                             ondragover="event.preventDefault(); this.classList.add('drag-active');"
-                             ondragleave="this.classList.remove('drag-active');"
-                             ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files.length) {{ var fi = document.getElementById('plant-single-photo-input'); fi.files = event.dataTransfer.files; htmx.trigger(this.closest('form'), 'submit'); }}"
-                             onclick="document.getElementById('plant-single-photo-input').click();">
-                            <input type="file"
-                                   id="plant-single-photo-input"
-                                   name="photo"
-                                   accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/tiff"
-                                   style="display:none;"
-                                   onchange="if (this.files.length) {{ htmx.trigger(this.closest('form'), 'submit'); }}" />
-                            <div class="drop-icon">📷</div>
-                            <div class="drop-title">Arrastra una fotografía aquí o <span class="drop-link">selecciona un archivo</span></div>
-                            <div class="drop-subtitle">Formatos aceptados: JPG, PNG, WEBP, AVIF, HEIC (máx 10 MB). Subida instantánea.</div>
-                        </div>
-                    </form>
 
                     <div id="plant-photos-wrapper">
                         <div class="modal-photo-list">
@@ -373,6 +364,7 @@ def render_new_plant_modal() -> str:
                   class="modal-form-wrapper"
                   id="new-plant-form">
                 <div class="modal-body">
+                    <div id="new-plant-error-banner" style="display: none; margin-bottom: 14px;"></div>
                     {render_form_fields(is_edit=False)}
 
                     <div style="margin-top: 16px;">
@@ -381,7 +373,7 @@ def render_new_plant_modal() -> str:
                              id="new-drop-zone"
                              ondragover="event.preventDefault(); this.classList.add('drag-active');"
                              ondragleave="this.classList.remove('drag-active');"
-                             ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files.length) {{ document.getElementById('new-photos-input').files = event.dataTransfer.files; updateNewPhotosFeedback(event.dataTransfer.files); }}"
+                             ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files && event.dataTransfer.files.length) {{ handleNewPhotosSelected(event.dataTransfer.files); }}"
                              onclick="document.getElementById('new-photos-input').click();">
                             <input type="file"
                                    id="new-photos-input"
@@ -389,11 +381,29 @@ def render_new_plant_modal() -> str:
                                    multiple
                                    accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/tiff"
                                    style="display:none;"
-                                   onchange="updateNewPhotosFeedback(this.files)" />
+                                   onclick="event.stopPropagation(); this.value=null;"
+                                   onchange="handleNewPhotosSelected(this.files)" />
                             <div class="drop-icon">📷</div>
-                            <div class="drop-title">Arrastra una o varias fotos aquí o <span class="drop-link">explora tus archivos</span></div>
-                            <div class="drop-subtitle">Formatos: JPG, PNG, WEBP, AVIF, HEIC. Se optimizarán a &lt;CLAVE&gt;_&lt;n&gt;.</div>
+                            <div class="drop-title">Arrastra fotografías aquí o <span class="drop-link">explora tus archivos</span></div>
+                            <div class="drop-subtitle">Formatos: JPG, PNG, WEBP, AVIF, HEIC. Puedes añadir fotos de una en una o en lote.</div>
                             <div id="new-photos-feedback" style="display:none; margin-top: 8px; font-weight: bold; color: var(--green-sage); font-size: 11.5px;"></div>
+                        </div>
+
+                        <div id="new-photos-preview-section" style="display: none; margin-top: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed var(--border-line);">
+                                <span id="new-photos-count-badge" class="form-label" style="color: var(--green-sage); margin: 0; font-size: 11px; font-weight: 700;">
+                                    ✓ FOTOGRAFÍAS LISTAS PARA SUBIR (0)
+                                </span>
+                                <button type="button"
+                                        onclick="clearAllNewPhotos()"
+                                        class="btn btn-sm"
+                                        style="padding: 2px 8px; font-size: 10px; color: var(--text-dim);"
+                                        title="Quitar todas las fotos seleccionadas">
+                                    ✕ Quitar todas
+                                </button>
+                            </div>
+                            <div id="new-photos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)); gap: 10px;">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -406,7 +416,10 @@ def render_new_plant_modal() -> str:
                             hx-swap="innerHTML">
                         [CANCELAR]
                     </button>
-                    <button type="submit" class="btn btn-red" style="font-weight: 700; padding: 8px 24px;">
+                    <button type="submit"
+                            id="new-plant-submit-btn"
+                            class="btn btn-red"
+                            style="font-weight: 700; padding: 8px 24px;">
                         ✓ [GUARDAR EJEMPLAR]
                     </button>
                 </div>
@@ -414,14 +427,131 @@ def render_new_plant_modal() -> str:
         </div>
     </div>
     <script>
-        function updateNewPhotosFeedback(files) {{
-            var el = document.getElementById('new-photos-feedback');
-            if (!el) return;
-            if (files && files.length > 0) {{
-                el.style.display = 'block';
-                el.textContent = '✓ ' + files.length + ' archivo(s) seleccionado(s) listos para subir';
+        var currentNewPhotosDT = new DataTransfer();
+
+        function formatFileSize(bytes) {{
+            if (!bytes || bytes <= 0) return '0 B';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }}
+
+        function handleNewPhotosSelected(files) {{
+            if (!files || files.length === 0) return;
+            // Accumulate photos incrementally, avoiding duplicates by name and size
+            for (var i = 0; i < files.length; i++) {{
+                var file = files[i];
+                var exists = false;
+                for (var j = 0; j < currentNewPhotosDT.files.length; j++) {{
+                    if (currentNewPhotosDT.files[j].name === file.name && currentNewPhotosDT.files[j].size === file.size) {{
+                        exists = true;
+                        break;
+                    }}
+                }}
+                if (!exists) {{
+                    currentNewPhotosDT.items.add(file);
+                }}
+            }}
+            syncAndRenderNewPhotos();
+        }}
+
+        function removeNewPhoto(idx) {{
+            var newDT = new DataTransfer();
+            for (var i = 0; i < currentNewPhotosDT.files.length; i++) {{
+                if (i !== idx) {{
+                    newDT.items.add(currentNewPhotosDT.files[i]);
+                }}
+            }}
+            currentNewPhotosDT = newDT;
+            syncAndRenderNewPhotos();
+        }}
+
+        function clearAllNewPhotos() {{
+            currentNewPhotosDT = new DataTransfer();
+            syncAndRenderNewPhotos();
+        }}
+
+        function syncAndRenderNewPhotos() {{
+            var input = document.getElementById('new-photos-input');
+            if (input) {{
+                input.files = currentNewPhotosDT.files;
+            }}
+
+            var feedbackEl = document.getElementById('new-photos-feedback');
+            var previewSec = document.getElementById('new-photos-preview-section');
+            var countBadge = document.getElementById('new-photos-count-badge');
+            var gridEl = document.getElementById('new-photos-grid');
+
+            var count = currentNewPhotosDT.files.length;
+
+            if (count > 0) {{
+                if (feedbackEl) {{
+                    feedbackEl.style.display = 'block';
+                    feedbackEl.textContent = (count === 1) ? '✓ 1 fotografía lista para subir' : ('✓ ' + count + ' fotografías listas para subir');
+                }}
+                if (previewSec) previewSec.style.display = 'block';
+                if (countBadge) countBadge.textContent = '✓ FOTOGRAFÍAS LISTAS PARA SUBIR (' + count + ')';
+
+                if (gridEl) {{
+                    gridEl.innerHTML = '';
+                    for (var i = 0; i < currentNewPhotosDT.files.length; i++) {{
+                        (function(file, index) {{
+                            var card = document.createElement('div');
+                            card.className = 'preview-thumb-card';
+                            card.style.cssText = 'position: relative; background: var(--bg-mantle); border: 1px solid var(--border-line); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; transition: border-color 0.15s;';
+                            card.onmouseover = function() {{ card.style.borderColor = 'var(--accent)'; }};
+                            card.onmouseout = function() {{ card.style.borderColor = 'var(--border-line)'; }};
+
+                            var thumbWrap = document.createElement('div');
+                            thumbWrap.style.cssText = 'position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--bg-base); overflow: hidden; display: flex; align-items: center; justify-content: center;';
+
+                            var img = document.createElement('img');
+                            img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; display: block;';
+                            img.alt = file.name;
+                            try {{
+                                img.src = URL.createObjectURL(file);
+                            }} catch (e) {{
+                                img.src = '';
+                            }}
+
+                            var removeBtn = document.createElement('button');
+                            removeBtn.type = 'button';
+                            removeBtn.title = 'Quitar esta fotografía';
+                            removeBtn.textContent = '✕';
+                            removeBtn.style.cssText = 'position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.75); color: #fff; border: 1px solid var(--border-line); font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; z-index: 2; transition: background 0.15s;';
+                            removeBtn.onmouseover = function() {{ removeBtn.style.background = 'var(--red-crimson)'; }};
+                            removeBtn.onmouseout = function() {{ removeBtn.style.background = 'rgba(0,0,0,0.75)'; }};
+                            removeBtn.onclick = function(e) {{
+                                e.stopPropagation();
+                                removeNewPhoto(index);
+                            }};
+
+                            var sizeBadge = document.createElement('span');
+                            sizeBadge.style.cssText = 'position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,0.75); color: var(--green-sage); font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 2px; z-index: 2; font-family: var(--font-mono);';
+                            sizeBadge.textContent = formatFileSize(file.size);
+
+                            var meta = document.createElement('div');
+                            meta.style.cssText = 'padding: 5px 6px; font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); border-top: 1px solid var(--border-line);';
+                            meta.title = file.name;
+                            meta.textContent = file.name;
+
+                            thumbWrap.appendChild(img);
+                            thumbWrap.appendChild(removeBtn);
+                            thumbWrap.appendChild(sizeBadge);
+                            card.appendChild(thumbWrap);
+                            card.appendChild(meta);
+
+                            gridEl.appendChild(card);
+                        }})(currentNewPhotosDT.files[i], i);
+                    }}
+                }}
             }} else {{
-                el.style.display = 'none';
+                if (feedbackEl) {{
+                    feedbackEl.style.display = 'none';
+                    feedbackEl.textContent = '';
+                }}
+                if (previewSec) previewSec.style.display = 'none';
+                if (gridEl) gridEl.innerHTML = '';
             }}
         }}
     </script>
@@ -429,7 +559,16 @@ def render_new_plant_modal() -> str:
 
 
 def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
-    """Renders the Edit Plant modal using unified form fields."""
+    """Renders the Edit Plant modal using unified form fields and staged photo management."""
+    photos = plant.get("photos", [])
+    plant_name = plant.get("name", "")
+    photo_items = [render_editable_photo_item_html(plant_name, ph, idx) for idx, ph in enumerate(photos)]
+    photos_html = "".join(photo_items) if photo_items else """
+        <div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">
+            No hay fotografías adjuntas para este ejemplar. Puede añadir nuevas fotografías abajo.
+        </div>
+    """
+
     return f"""
     <div class="modal-overlay" id="edit-plant-modal">
         <div class="modal-dialog">
@@ -445,10 +584,79 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
             <form hx-post="/plants/{plant.get('name')}/edit"
                   hx-target="#modal-container"
                   hx-swap="innerHTML"
+                  hx-encoding="multipart/form-data"
                   class="modal-form-wrapper"
                   id="edit-plant-form">
                 <div class="modal-body">
                     {render_form_fields(plant=plant, is_edit=True)}
+
+                    <!-- Hidden inputs for staged photo deletions -->
+                    <div id="staged-deletions-container"></div>
+
+                    <!-- Existing photos management with staged deletion and undo -->
+                    <div style="margin-top: 20px; border-top: 1px dashed var(--border-line); padding-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);">
+                                GESTIÓN DE FOTOGRAFÍAS EXISTENTES ({len(photos)})
+                            </span>
+                            <span id="edit-deletion-status" style="font-size: 11px; color: var(--peach-orange); font-weight: 600;"></span>
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 10px;">
+                            Pulsa ✕ para marcar una foto para eliminar (sin confirmación). Las eliminaciones solo se aplicarán al pulsar [GUARDAR CAMBIOS].
+                        </div>
+
+                        <div id="edit-plant-photos-wrapper">
+                            <div class="modal-photo-list">
+                                {photos_html}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Staged new photos addition -->
+                    <div style="margin-top: 20px; border-top: 1px dashed var(--border-line); padding-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span class="form-label" style="color: var(--green-sage);">
+                                AÑADIR NUEVAS FOTOGRAFÍAS (OPCIONAL)
+                            </span>
+                        </div>
+
+                        <div class="drop-zone"
+                             id="edit-drop-zone"
+                             ondragover="event.preventDefault(); this.classList.add('drag-active');"
+                             ondragleave="this.classList.remove('drag-active');"
+                             ondrop="event.preventDefault(); this.classList.remove('drag-active'); if (event.dataTransfer.files && event.dataTransfer.files.length) {{ handleEditNewPhotosSelected(event.dataTransfer.files); }}"
+                             onclick="document.getElementById('edit-new-photos-input').click();">
+                            <input type="file"
+                                   id="edit-new-photos-input"
+                                   name="new_photos"
+                                   multiple
+                                   accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/tiff"
+                                   style="display:none;"
+                                   onclick="event.stopPropagation(); this.value=null;"
+                                   onchange="handleEditNewPhotosSelected(this.files)" />
+                            <div class="drop-icon">📷</div>
+                            <div class="drop-title">Arrastra fotografías aquí o <span class="drop-link">explora tus archivos</span></div>
+                            <div class="drop-subtitle">Las fotos nuevas se guardarán al pulsar [GUARDAR CAMBIOS].</div>
+                            <div id="edit-new-photos-feedback" style="display:none; margin-top: 8px; font-weight: bold; color: var(--green-sage); font-size: 11.5px;"></div>
+                        </div>
+
+                        <div id="edit-new-photos-preview-section" style="display: none; margin-top: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px dashed var(--border-line);">
+                                <span id="edit-new-photos-count-badge" class="form-label" style="color: var(--green-sage); margin: 0; font-size: 11px; font-weight: 700;">
+                                    ✓ NUEVAS FOTOGRAFÍAS LISTAS PARA SUBIR (0)
+                                </span>
+                                <button type="button"
+                                        onclick="clearAllEditNewPhotos()"
+                                        class="btn btn-sm"
+                                        style="padding: 2px 8px; font-size: 10px; color: var(--text-dim);"
+                                        title="Quitar todas las nuevas fotos seleccionadas">
+                                    ✕ Quitar todas
+                                </button>
+                            </div>
+                            <div id="edit-new-photos-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)); gap: 10px;">
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="modal-footer-sticky">
@@ -459,11 +667,197 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
                             hx-swap="innerHTML">
                         [VOLVER AL EXPEDIENTE]
                     </button>
-                    <button type="submit" class="btn btn-red" style="font-weight: 700; padding: 8px 24px;">
+                    <button type="submit"
+                            id="edit-plant-submit-btn"
+                            class="btn btn-red"
+                            style="font-weight: 700; padding: 8px 24px;">
                         ✓ [GUARDAR CAMBIOS]
                     </button>
                 </div>
             </form>
         </div>
     </div>
+    <script>
+        var stagedDeletions = new Set();
+        var editNewPhotosDT = new DataTransfer();
+
+        function updateDeletionStatusText() {{
+            var el = document.getElementById('edit-deletion-status');
+            if (el) {{
+                if (stagedDeletions.size > 0) {{
+                    el.textContent = '⚠ ' + stagedDeletions.size + ' foto(s) marcada(s) para eliminar al guardar';
+                }} else {{
+                    el.textContent = '';
+                }}
+            }}
+        }}
+
+        function markPhotoForDeletion(photoName, idx) {{
+            stagedDeletions.add(photoName);
+            var card = document.getElementById('existing-photo-card-' + idx);
+            var delBtn = document.getElementById('del-btn-' + idx);
+            var undoBox = document.getElementById('undo-container-' + idx);
+            var badge = document.getElementById('deletion-badge-' + idx);
+            var thumb = document.getElementById('photo-thumb-' + idx);
+            var container = document.getElementById('staged-deletions-container');
+
+            if (card) {{
+                card.style.borderColor = 'var(--red-crimson)';
+                card.style.backgroundColor = 'rgba(224, 75, 75, 0.12)';
+            }}
+            if (delBtn) delBtn.style.display = 'none';
+            if (undoBox) undoBox.style.display = 'block';
+            if (badge) badge.style.display = 'block';
+            if (thumb) thumb.style.opacity = '0.35';
+
+            if (container && !document.getElementById('del-inp-' + idx)) {{
+                var inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'photos_to_delete';
+                inp.value = photoName;
+                inp.id = 'del-inp-' + idx;
+                container.appendChild(inp);
+            }}
+            updateDeletionStatusText();
+        }}
+
+        function unmarkPhotoForDeletion(photoName, idx) {{
+            stagedDeletions.delete(photoName);
+            var card = document.getElementById('existing-photo-card-' + idx);
+            var delBtn = document.getElementById('del-btn-' + idx);
+            var undoBox = document.getElementById('undo-container-' + idx);
+            var badge = document.getElementById('deletion-badge-' + idx);
+            var thumb = document.getElementById('photo-thumb-' + idx);
+            var inp = document.getElementById('del-inp-' + idx);
+
+            if (card) {{
+                card.style.borderColor = '';
+                card.style.backgroundColor = '';
+            }}
+            if (delBtn) delBtn.style.display = 'flex';
+            if (undoBox) undoBox.style.display = 'none';
+            if (badge) badge.style.display = 'none';
+            if (thumb) thumb.style.opacity = '1';
+            if (inp) inp.remove();
+            updateDeletionStatusText();
+        }}
+
+        function handleEditNewPhotosSelected(files) {{
+            if (!files || files.length === 0) return;
+            for (var i = 0; i < files.length; i++) {{
+                var file = files[i];
+                var exists = false;
+                for (var j = 0; j < editNewPhotosDT.files.length; j++) {{
+                    if (editNewPhotosDT.files[j].name === file.name && editNewPhotosDT.files[j].size === file.size) {{
+                        exists = true;
+                        break;
+                    }}
+                }}
+                if (!exists) {{
+                    editNewPhotosDT.items.add(file);
+                }}
+            }}
+            syncAndRenderEditNewPhotos();
+        }}
+
+        function removeEditNewPhoto(idx) {{
+            var newDT = new DataTransfer();
+            for (var i = 0; i < editNewPhotosDT.files.length; i++) {{
+                if (i !== idx) {{
+                    newDT.items.add(editNewPhotosDT.files[i]);
+                }}
+            }}
+            editNewPhotosDT = newDT;
+            syncAndRenderEditNewPhotos();
+        }}
+
+        function clearAllEditNewPhotos() {{
+            editNewPhotosDT = new DataTransfer();
+            syncAndRenderEditNewPhotos();
+        }}
+
+        function syncAndRenderEditNewPhotos() {{
+            var input = document.getElementById('edit-new-photos-input');
+            if (input) {{
+                input.files = editNewPhotosDT.files;
+            }}
+
+            var feedbackEl = document.getElementById('edit-new-photos-feedback');
+            var previewSec = document.getElementById('edit-new-photos-preview-section');
+            var countBadge = document.getElementById('edit-new-photos-count-badge');
+            var gridEl = document.getElementById('edit-new-photos-grid');
+
+            var count = editNewPhotosDT.files.length;
+
+            if (count > 0) {{
+                if (feedbackEl) {{
+                    feedbackEl.style.display = 'block';
+                    feedbackEl.textContent = (count === 1) ? '✓ 1 fotografía lista para añadir al guardar' : ('✓ ' + count + ' fotografías listas para añadir al guardar');
+                }}
+                if (previewSec) previewSec.style.display = 'block';
+                if (countBadge) countBadge.textContent = '✓ NUEVAS FOTOGRAFÍAS LISTAS PARA SUBIR (' + count + ')';
+
+                if (gridEl) {{
+                    gridEl.innerHTML = '';
+                    for (var i = 0; i < editNewPhotosDT.files.length; i++) {{
+                        (function(file, index) {{
+                            var card = document.createElement('div');
+                            card.className = 'preview-thumb-card';
+                            card.style.cssText = 'position: relative; background: var(--bg-mantle); border: 1px solid var(--border-line); border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; transition: border-color 0.15s;';
+                            card.onmouseover = function() {{ card.style.borderColor = 'var(--accent)'; }};
+                            card.onmouseout = function() {{ card.style.borderColor = 'var(--border-line)'; }};
+
+                            var thumbWrap = document.createElement('div');
+                            thumbWrap.style.cssText = 'position: relative; width: 100%; aspect-ratio: 1 / 1; background: var(--bg-base); overflow: hidden; display: flex; align-items: center; justify-content: center;';
+
+                            var img = document.createElement('img');
+                            img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; display: block;';
+                            img.alt = file.name;
+                            try {{
+                                img.src = URL.createObjectURL(file);
+                            }} catch (e) {{
+                                img.src = '';
+                            }}
+
+                            var removeBtn = document.createElement('button');
+                            removeBtn.type = 'button';
+                            removeBtn.title = 'Quitar esta fotografía';
+                            removeBtn.textContent = '✕';
+                            removeBtn.style.cssText = 'position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,0.75); color: #fff; border: 1px solid var(--border-line); font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; line-height: 1; z-index: 2; transition: background 0.15s;';
+                            removeBtn.onmouseover = function() {{ removeBtn.style.background = 'var(--red-crimson)'; }};
+                            removeBtn.onmouseout = function() {{ removeBtn.style.background = 'rgba(0,0,0,0.75)'; }};
+                            removeBtn.onclick = function(e) {{
+                                e.stopPropagation();
+                                removeEditNewPhoto(index);
+                            }};
+
+                            var sizeBadge = document.createElement('span');
+                            sizeBadge.style.cssText = 'position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,0.75); color: var(--green-sage); font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 2px; z-index: 2; font-family: var(--font-mono);';
+                            sizeBadge.textContent = formatFileSize(file.size);
+
+                            var meta = document.createElement('div');
+                            meta.style.cssText = 'padding: 5px 6px; font-size: 10px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); border-top: 1px solid var(--border-line);';
+                            meta.title = file.name;
+                            meta.textContent = file.name;
+
+                            thumbWrap.appendChild(img);
+                            thumbWrap.appendChild(removeBtn);
+                            thumbWrap.appendChild(sizeBadge);
+                            card.appendChild(thumbWrap);
+                            card.appendChild(meta);
+
+                            gridEl.appendChild(card);
+                        }})(editNewPhotosDT.files[i], i);
+                    }}
+                }}
+            }} else {{
+                if (feedbackEl) {{
+                    feedbackEl.style.display = 'none';
+                    feedbackEl.textContent = '';
+                }}
+                if (previewSec) previewSec.style.display = 'none';
+                if (gridEl) gridEl.innerHTML = '';
+            }}
+        }}
+    </script>
     """

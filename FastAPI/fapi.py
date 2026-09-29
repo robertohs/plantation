@@ -7,9 +7,10 @@ import csv
 import io
 import os
 import re
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 
 import db
@@ -88,6 +89,53 @@ def list_plants_partial(
 # SPECIMEN MODALS (VIEW, CREATE, EDIT)
 # ==============================================================================
 
+@router.get("/plants/validate-key", response_class=HTMLResponse)
+def validate_key_endpoint(name: str = Query("")):
+    """Validates specimen key availability in real-time as the user types."""
+    key = db.clean_key(name)
+    if not key:
+        return HTMLResponse("""
+            <script>
+                var btn = document.getElementById('new-plant-submit-btn');
+                var inp = document.getElementById('inp-name');
+                if (btn) btn.disabled = false;
+                if (inp) inp.style.borderColor = 'var(--border-dim)';
+            </script>
+        """)
+
+    existing = db.get_plant(key)
+    if existing:
+        return HTMLResponse(f"""
+            <span style="color: var(--red-crimson); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                ✕ La clave '{key}' ya existe en el registro. Ingrese una clave única.
+            </span>
+            <script>
+                var btn = document.getElementById('new-plant-submit-btn');
+                var inp = document.getElementById('inp-name');
+                if (btn) btn.disabled = true;
+                if (inp) inp.style.borderColor = 'var(--red-crimson)';
+            </script>
+        """)
+    else:
+        return HTMLResponse(f"""
+            <span style="color: var(--green-sage); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                ✓ Clave '{key}' disponible para registro.
+            </span>
+            <script>
+                var btn = document.getElementById('new-plant-submit-btn');
+                var inp = document.getElementById('inp-name');
+                if (btn) btn.disabled = false;
+                if (inp) inp.style.borderColor = 'var(--green-sage)';
+            </script>
+        """)
+
+
+@router.get("/plants/modal/new", response_class=HTMLResponse)
+def new_plant_modal():
+    """Renders New Plant registration modal."""
+    return HTMLResponse(render_new_plant_modal())
+
+
 @router.get("/plants/{name}", response_class=HTMLResponse)
 def view_plant_modal(name: str):
     """Renders comprehensive technical dossier modal."""
@@ -95,12 +143,6 @@ def view_plant_modal(name: str):
     if not plant:
         return HTMLResponse("<div class='modal-overlay'><div class='modal-dialog'><div class='modal-body'>Planta no encontrada.</div></div></div>")
     return HTMLResponse(render_view_plant_modal_content(plant))
-
-
-@router.get("/plants/modal/new", response_class=HTMLResponse)
-def new_plant_modal():
-    """Renders New Plant registration modal."""
-    return HTMLResponse(render_new_plant_modal())
 
 
 @router.post("/plants", response_class=HTMLResponse)
@@ -125,7 +167,33 @@ async def create_plant_submit(
     """Processes creation of a new plant record with photo uploads."""
     key = db.clean_key(name)
     if not key:
-        return HTMLResponse("<div class='alert-box alert-error'>Identificador (KEY) inválido. Debe contener caracteres alfanuméricos.</div>", status_code=400)
+        return HTMLResponse("""
+            <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                ✕ Error: El identificador (KEY) debe contener caracteres alfanuméricos válidos.
+            </div>
+            <script>
+                var inp = document.getElementById('inp-name');
+                if (inp) { inp.style.borderColor = 'var(--red-crimson)'; inp.focus(); }
+            </script>
+        """)
+
+    if db.get_plant(key):
+        return HTMLResponse(f"""
+            <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                ✕ Error de registro: La clave '{key}' ya existe en la base de datos. Ingrese un identificador único.
+            </div>
+            <div id="key-validation-feedback" hx-swap-oob="innerHTML">
+                <span style="color: var(--red-crimson); font-weight: 700;">
+                    ✕ Clave duplicada: '{key}' ya está registrada.
+                </span>
+            </div>
+            <script>
+                var inp = document.getElementById('inp-name');
+                var btn = document.getElementById('new-plant-submit-btn');
+                if (inp) {{ inp.style.borderColor = 'var(--red-crimson)'; inp.focus(); }}
+                if (btn) {{ btn.disabled = true; }}
+            </script>
+        """)
 
     # Save uploaded photos
     saved_photos: List[str] = []
@@ -138,15 +206,16 @@ async def create_plant_submit(
                     if ok and fn:
                         saved_photos.append(fn)
 
+    now_str = datetime.now().strftime("%Y-%m-%d")
     plant_data = {
         "name": key,
-        "species": species.strip(),
+        "species": species.strip() or "Adenium obesum",
         "aka": aka.strip(),
         "location": location.strip(),
-        "status": status.strip(),
-        "height": height.strip(),
-        "registration_date": registration_date.strip(),
-        "sowing_cutting_date": sowing_cutting_date.strip(),
+        "status": status.strip() or "OK",
+        "height": height.strip() or f"{now_str} - 0 cm",
+        "registration_date": registration_date.strip() or now_str,
+        "sowing_cutting_date": sowing_cutting_date.strip() or now_str,
         "graft": graft.strip(),
         "padres": padres.strip(),
         "last_pruned": last_pruned.strip(),
@@ -159,7 +228,11 @@ async def create_plant_submit(
 
     success, msg = db.create_plant(plant_data)
     if not success:
-        return HTMLResponse(f"<div class='alert-box alert-error'>{msg}</div>", status_code=400)
+        return HTMLResponse(f"""
+            <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                ✕ {msg}
+            </div>
+        """)
 
     plants = db.get_plants()
     plants_grid = render_plants_grid(plants)
@@ -180,7 +253,7 @@ def edit_plant_modal(name: str):
 
 
 @router.post("/plants/{name}/edit", response_class=HTMLResponse)
-def update_plant_submit(
+async def update_plant_submit(
     name: str,
     species: str = Form(...),
     aka: str = Form(""),
@@ -195,9 +268,35 @@ def update_plant_submit(
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
     comentarios: str = Form(""),
-    indxw: Optional[str] = Form(None)
+    indxw: Optional[str] = Form(None),
+    photos_to_delete: List[str] = Form([]),
+    new_photos: List[UploadFile] = File(None)
 ):
-    """Updates plant details and updates view modal and card out-of-band."""
+    """Updates plant details and commits staged photo deletions and new uploads atomically."""
+    key = db.clean_key(name)
+    plant = db.get_plant(key)
+    if not plant:
+        return HTMLResponse("<div class='alert-box alert-error'>Ejemplar no encontrado.</div>", status_code=404)
+
+    # 1. Process staged photo deletions
+    if photos_to_delete:
+        for ph in photos_to_delete:
+            ph_clean = ph.strip()
+            if ph_clean:
+                db.remove_photo_from_plant(key, ph_clean)
+                delete_photo_file(ph_clean)
+
+    # 2. Process staged new photo uploads
+    if new_photos:
+        for file in new_photos:
+            if file and file.filename:
+                file_bytes = await file.read()
+                if file_bytes and len(file_bytes) > 0:
+                    ok, saved_fn, _ = validate_and_save_photo(key, file_bytes, file.filename)
+                    if ok and saved_fn:
+                        db.add_photo_to_plant(key, saved_fn)
+
+    # 3. Update plant botanical metadata
     plant_data = {
         "species": species.strip(),
         "aka": aka.strip(),
@@ -216,11 +315,11 @@ def update_plant_submit(
     if indxw is not None:
         plant_data["indxw"] = 1 if indxw.strip() in ("1", "true", "True", "on") else 0
 
-    success, msg = db.update_plant(name, plant_data)
+    success, msg = db.update_plant(key, plant_data)
     if not success:
         return HTMLResponse(f"<div class='alert-box alert-error'>{msg}</div>", status_code=400)
 
-    updated_plant = db.get_plant(name)
+    updated_plant = db.get_plant(key)
     if not updated_plant:
         return HTMLResponse("<div class='alert-box alert-error'>Error al recuperar ejemplar.</div>", status_code=500)
 
@@ -251,8 +350,12 @@ def delete_plant_endpoint(name: str):
 # ==============================================================================
 
 @router.post("/plants/{name}/photos", response_class=HTMLResponse)
-async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)):
-    """Handles single drag & drop photo upload into plant dossier."""
+async def upload_individual_plant_photo(
+    name: str,
+    photo: UploadFile = File(...),
+    source: str = Query("edit")
+):
+    """Handles single drag & drop photo upload into plant edit modal."""
     key = db.clean_key(name)
     plant = db.get_plant(key)
     if not plant:
@@ -270,10 +373,13 @@ async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)
     updated_plant = db.get_plant(key)
     photos = updated_plant.get("photos", []) if updated_plant else []
 
-    photo_items = [render_photo_item_html(key, ph) for ph in photos]
+    is_edit = (source == "edit")
+    target_wrapper = "#edit-plant-photos-wrapper" if is_edit else "#plant-photos-wrapper"
+    photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
     oob_card = render_card_html(updated_plant, oob=True)
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
-    oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
+    oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
+    oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
     return HTMLResponse(f"""
         <div class="modal-photo-list">
@@ -282,12 +388,12 @@ async def upload_individual_plant_photo(name: str, photo: UploadFile = File(...)
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
             ✓ Nueva fotografía '{saved_fn}' añadida correctamente.
         </div>
-    """ + oob_card + oob_admin + oob_count)
+    """ + oob_card + oob_admin + oob_count_edit + oob_count_dossier)
 
 
 @router.delete("/plants/{name}/photos/{filename:path}", response_class=HTMLResponse)
 @router.post("/plants/{name}/photos/{filename:path}/delete", response_class=HTMLResponse)
-def remove_plant_photo(name: str, filename: str):
+def remove_plant_photo(name: str, filename: str, source: str = Query("edit")):
     """Removes a photo from plant record and purges file from disk."""
     key = db.clean_key(name)
     db.remove_photo_from_plant(key, filename)
@@ -295,22 +401,25 @@ def remove_plant_photo(name: str, filename: str):
 
     plant = db.get_plant(key)
     photos = plant.get("photos", []) if plant else []
-    photo_items = [render_photo_item_html(key, ph) for ph in photos]
+    is_edit = (source == "edit")
+    target_wrapper = "#edit-plant-photos-wrapper" if is_edit else "#plant-photos-wrapper"
+    photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
 
     oob_card = render_card_html(plant, oob=True)
     oob_admin = f'<div id="admin-container" hx-swap-oob="innerHTML">{render_admin_panel_content()}</div>' if admin_state.get("open") else ""
-    oob_count = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
+    oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
+    oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
 
-    empty_html = '<div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">No hay fotografías adjuntas para este ejemplar. Puede arrastrar o seleccionar imágenes abajo.</div>'
+    empty_html = '<div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">No hay fotografías adjuntas para este ejemplar. Arrastra o selecciona imágenes arriba para añadirlas.</div>' if is_edit else '<div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 10px 0; text-align: center;">No hay fotografías adjuntas para este ejemplar. Para añadir o gestionar fotos, pulsa [EDITAR DATOS].</div>'
 
     return HTMLResponse(f"""
         <div class="modal-photo-list">
             {''.join(photo_items) if photo_items else empty_html}
         </div>
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
-            ✓ Foto '{filename}' eliminada del expediente.
+            ✓ Foto '{filename}' eliminada del registro.
         </div>
-    """ + oob_card + oob_admin + oob_count)
+    """ + oob_card + oob_admin + oob_count_edit + oob_count_dossier)
 
 
 # ==============================================================================

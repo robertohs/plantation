@@ -137,8 +137,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             <input type="hidden" id="current-age-filter" value="ALL" />
             <input type="hidden" id="current-height-filter" value="ALL" />
 
-            <div class="filter-bar" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <div class="filter-bar">
+                <div class="filter-group">
                     <span class="filter-label">ESTADO:</span>
                     <button type="button"
                             class="status-pill status-filter-btn active"
@@ -159,7 +159,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
                 <div class="filter-divider"></div>
 
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <div class="filter-group">
                     <span class="filter-label">EDAD:</span>
                     <button type="button"
                             class="status-pill age-filter-btn active"
@@ -185,7 +185,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
                 <div class="filter-divider"></div>
 
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <div class="filter-group">
                     <span class="filter-label">ALTURA:</span>
                     <button type="button"
                             class="status-pill height-filter-btn active"
@@ -441,6 +441,102 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 }});
             }}
         }});
+
+        // Plant Card Photo Carousel (Lazy + Hardware-Accelerated)
+        var _carouselTouchX = 0;
+        var _carouselTouchY = 0;
+
+        function preloadCarouselPhotos(carousel) {{
+            if (!carousel || carousel._preloaded) return;
+            carousel._preloaded = true;
+            var lazyImgs = carousel.querySelectorAll('img[data-src]');
+            for (var i = 0; i < lazyImgs.length; i++) {{
+                var img = lazyImgs[i];
+                var dsrc = img.getAttribute('data-src');
+                if (dsrc) {{
+                    img.src = dsrc;
+                    img.removeAttribute('data-src');
+                }}
+            }}
+        }}
+
+        function handleCarouselTouchStart(e, carousel) {{
+            preloadCarouselPhotos(carousel);
+            if (e.touches && e.touches[0]) {{
+                _carouselTouchX = e.touches[0].clientX;
+                _carouselTouchY = e.touches[0].clientY;
+            }}
+        }}
+
+        function handleCarouselTouchEnd(e, carousel) {{
+            if (e.changedTouches && e.changedTouches[0]) {{
+                var diffX = e.changedTouches[0].clientX - _carouselTouchX;
+                var diffY = e.changedTouches[0].clientY - _carouselTouchY;
+                if (Math.abs(diffX) > 35 && Math.abs(diffY) < 60) {{
+                    if (e.cancelable) e.preventDefault();
+                    e.stopPropagation();
+                    if (diffX < 0) {{
+                        navigateCardCarousel(e, carousel, 1);
+                    }} else {{
+                        navigateCardCarousel(e, carousel, -1);
+                    }}
+                }}
+            }}
+        }}
+
+        function navigateCardCarousel(event, el, delta) {{
+            if (event) {{
+                event.stopPropagation();
+                if (event.preventDefault && event.type !== 'touchend') event.preventDefault();
+            }}
+            var carousel = el.classList && el.classList.contains('plant-carousel') ? el : el.closest('.plant-carousel');
+            if (!carousel) return;
+            preloadCarouselPhotos(carousel);
+
+            var slides = carousel.querySelectorAll('.carousel-slide');
+            var dots = carousel.querySelectorAll('.carousel-dot');
+            var badge = carousel.querySelector('.carousel-count-badge');
+            var total = slides.length;
+            if (total <= 1) return;
+
+            var current = parseInt(carousel.getAttribute('data-current-index') || '0', 10);
+            var next = (current + delta + total) % total;
+            carousel.setAttribute('data-current-index', next);
+
+            for (var i = 0; i < total; i++) {{
+                slides[i].classList.toggle('active', i === next);
+                if (dots[i]) dots[i].classList.toggle('active', i === next);
+            }}
+            if (badge) {{
+                badge.textContent = (next + 1) + '/' + total;
+            }}
+        }}
+
+        function goToCardCarouselSlide(event, dot, index) {{
+            if (event) {{
+                event.stopPropagation();
+                if (event.preventDefault) event.preventDefault();
+            }}
+            var carousel = dot.closest('.plant-carousel');
+            if (!carousel) return;
+            preloadCarouselPhotos(carousel);
+
+            var slides = carousel.querySelectorAll('.carousel-slide');
+            var dots = carousel.querySelectorAll('.carousel-dot');
+            var badge = carousel.querySelector('.carousel-count-badge');
+            var total = slides.length;
+            if (index < 0 || index >= total) return;
+
+            carousel.setAttribute('data-current-index', index);
+
+            for (var i = 0; i < total; i++) {{
+                slides[i].classList.toggle('active', i === index);
+                if (dots[i]) dots[i].classList.toggle('active', i === index);
+            }}
+            if (badge) {{
+                badge.textContent = (index + 1) + '/' + total;
+            }}
+        }}
     </script>
 </body>
 </html>"""

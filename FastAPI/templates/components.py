@@ -11,34 +11,56 @@ STATUS_BADGE_CLASSES = {"OK": "status-OK", "notOK": "status-notOK"}
 STATUS_SPANISH = {"OK": "OK", "notOK": "notOK"}
 
 
-def render_photo_item_html(plant_name: str, ph: str) -> str:
-    """Renders a photo card in the technical dossier with confirmation before deletion."""
+def render_photo_item_html(plant_name: str, ph: str, allow_delete: bool = False, target_wrapper: str = "#edit-plant-photos-wrapper") -> str:
+    """Renders a photo card in dossier (read-only) or simple preview."""
+    delete_btn = f"""
+        <button type="button"
+                class="photo-delete-badge"
+                hx-delete="/plants/{plant_name}/photos/{ph}?source=edit"
+                hx-target="{target_wrapper}"
+                hx-swap="innerHTML"
+                onclick="event.stopPropagation();"
+                title="Eliminar foto del ejemplar">✕</button>
+    """ if allow_delete else ""
+
     return f"""
         <div class="modal-photo-item">
-            <button type="button"
-                    class="photo-delete-badge"
-                    hx-delete="/plants/{plant_name}/photos/{ph}"
-                    hx-target="#plant-photos-wrapper"
-                    hx-swap="innerHTML"
-                    hx-confirm="¿Está seguro de eliminar de forma permanente la fotografía '{ph}' del ejemplar {plant_name}?"
-                    onclick="event.stopPropagation();"
-                    title="Eliminar foto del ejemplar">✕</button>
+            {delete_btn}
             <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
                 <img class="modal-photo-thumb" src="/images/{ph}" alt="{ph}" />
             </a>
             <div style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;" title="{ph}">
                 <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph}</a>
             </div>
+        </div>
+    """
+
+
+def render_editable_photo_item_html(plant_name: str, ph: str, idx: int) -> str:
+    """Renders a photo card in edit modal with staged deletion and instant undo (no confirmation dialog)."""
+    return f"""
+        <div class="modal-photo-item" id="existing-photo-card-{idx}" style="position: relative; transition: all 0.2s ease;">
             <button type="button"
-                    class="photo-delete-btn"
-                    hx-delete="/plants/{plant_name}/photos/{ph}"
-                    hx-target="#plant-photos-wrapper"
-                    hx-swap="innerHTML"
-                    hx-confirm="¿Está seguro de eliminar de forma permanente la fotografía '{ph}' del ejemplar {plant_name}?"
-                    onclick="event.stopPropagation();"
-                    title="Eliminar foto permanentemente">
-                🗑 [ELIMINAR]
-            </button>
+                    class="photo-delete-badge"
+                    id="del-btn-{idx}"
+                    onclick="markPhotoForDeletion('{ph}', {idx});"
+                    title="Marcar fotografía para eliminar (se aplicará al guardar)">✕</button>
+            <div id="undo-container-{idx}" style="display: none; position: absolute; top: 4px; right: 4px; z-index: 5;">
+                <button type="button"
+                        onclick="unmarkPhotoForDeletion('{ph}', {idx});"
+                        class="btn btn-sm"
+                        style="padding: 2px 6px; font-size: 10px; background: var(--bg-surface); border: 1px solid var(--accent); color: var(--accent); font-weight: 700; cursor: pointer; border-radius: 3px;"
+                        title="Deshacer eliminación">↶ Deshacer</button>
+            </div>
+            <div id="deletion-badge-{idx}" style="display: none; position: absolute; bottom: 18px; left: 4px; right: 4px; background: rgba(180, 40, 40, 0.95); color: #fff; font-size: 8.5px; font-weight: 700; text-align: center; padding: 2px 4px; border-radius: 2px; text-transform: uppercase; z-index: 4; pointer-events: none;">
+                🗑 Eliminación pendiente
+            </div>
+            <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
+                <img class="modal-photo-thumb" id="photo-thumb-{idx}" src="/images/{ph}" alt="{ph}" style="transition: opacity 0.2s;" />
+            </a>
+            <div style="font-size: 10px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;" title="{ph}">
+                <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph}</a>
+            </div>
         </div>
     """
 
@@ -49,31 +71,93 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
     status_cls = STATUS_BADGE_CLASSES.get(status, "status-OK")
     status_es = STATUS_SPANISH.get(status, status)
 
-    photos = p.get("photos", [])
-    if photos and len(photos) > 0:
+    plant_key = p.get("name", "")
+    raw_photos = p.get("photos", [])
+    # Reverse-chronological order specifically for card carousel: latest photo added is shown first
+    photos = list(reversed(raw_photos)) if raw_photos else []
+    if not photos or len(photos) == 0:
+        thumb_img = f"""
+            <div class="card-thumbnail-box plant-thumb-wrapper no-photo">
+                <div class="card-thumbnail-placeholder">
+                    <div class="placeholder-icon">🌱</div>
+                    <div class="placeholder-text">SIN FOTOGRAFÍA</div>
+                    <div class="placeholder-sub">CLAVE: {plant_key}</div>
+                </div>
+            </div>
+        """
+    elif len(photos) == 1:
         first_img = photos[0]
         thumb_img = f"""
             <div class="card-thumbnail-box plant-thumb-wrapper">
                 <img class="card-thumbnail-img plant-thumb"
                      src="/images/{first_img}"
-                     alt="{p.get('name')}"
+                     alt="{plant_key}"
                      loading="lazy"
                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
                 <div class="card-thumbnail-placeholder" style="display: none;">
                     <div class="placeholder-icon">🌱</div>
                     <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
                 </div>
-                <span class="thumbnail-badge-count photo-count-pill">{len(photos)} FOTO{'S' if len(photos) > 1 else ''}</span>
+                <span class="thumbnail-badge-count photo-count-pill">1 FOTO</span>
             </div>
         """
     else:
-        thumb_img = f"""
-            <div class="card-thumbnail-box plant-thumb-wrapper no-photo">
-                <div class="card-thumbnail-placeholder">
-                    <div class="placeholder-icon">🌱</div>
-                    <div class="placeholder-text">SIN FOTOGRAFÍA</div>
-                    <div class="placeholder-sub">CLAVE: {p.get('name')}</div>
+        total_p = len(photos)
+        slides_list = []
+        dots_list = []
+        for idx, ph in enumerate(photos):
+            active_cls = " active" if idx == 0 else ""
+            src_attr = f'src="/images/{ph}"' if idx == 0 else f'data-src="/images/{ph}"'
+            slides_list.append(f"""
+                <div class="carousel-slide{active_cls}" data-slide-index="{idx}">
+                    <img class="card-thumbnail-img plant-thumb"
+                         {src_attr}
+                         alt="{plant_key} ({idx+1}/{total_p})"
+                         loading="lazy"
+                         decoding="async"
+                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                    <div class="card-thumbnail-placeholder" style="display: none;">
+                        <div class="placeholder-icon">🌱</div>
+                        <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
+                    </div>
                 </div>
+            """)
+            dots_list.append(f"""
+                <button type="button"
+                        class="carousel-dot{active_cls}"
+                        data-dot-index="{idx}"
+                        onclick="goToCardCarouselSlide(event, this, {idx})"
+                        aria-label="Foto {idx+1} de {total_p}"
+                        title="Foto {idx+1} de {total_p}"></button>
+            """)
+
+        slides_html = "".join(slides_list)
+        dots_html = "".join(dots_list)
+        thumb_img = f"""
+            <div class="card-thumbnail-box plant-thumb-wrapper plant-carousel"
+                 id="carousel-{plant_key}"
+                 data-current-index="0"
+                 onmouseenter="preloadCarouselPhotos(this)"
+                 onfocusin="preloadCarouselPhotos(this)"
+                 ontouchstart="handleCarouselTouchStart(event, this)"
+                 ontouchend="handleCarouselTouchEnd(event, this)">
+                <div class="carousel-track">
+                    {slides_html}
+                </div>
+                <button type="button"
+                        class="carousel-nav-btn carousel-prev"
+                        onclick="navigateCardCarousel(event, this, -1)"
+                        aria-label="Foto anterior"
+                        title="Foto anterior">‹</button>
+                <button type="button"
+                        class="carousel-nav-btn carousel-next"
+                        onclick="navigateCardCarousel(event, this, 1)"
+                        aria-label="Siguiente foto"
+                        title="Siguiente foto">›</button>
+                <div class="carousel-indicators">
+                    {dots_html}
+                </div>
+                <span class="thumbnail-badge-count photo-count-pill carousel-count-badge">1/{total_p}</span>
             </div>
         """
 
