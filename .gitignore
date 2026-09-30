@@ -1,8 +1,95 @@
-node_modules/
+# ==============================================================================
+# PLANTATION - GITIGNORE
+# ==============================================================================
+
+# --- 1. Python Bytecode, Caches & Build Artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# --- 2. Python Virtual Environments (venvs) ---
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+bin/
+include/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- 3. Google AI Studio & Cloud Workspace ---
+.aistudio/
+.idx/
+.google/
+*firebase-applet-config*
+firebase-debug.log*
+firestore-debug.log*
+.firebaserc
+
+# --- 4. Application Runtime State & Database Artefacts ---
+DB/backups/
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-journal
+*.db.bak
+*.db.backup
+plantation_full_archive_*.zip
+*.zip
+*.tar.gz
+*.csv.tmp
+tmp/
+temp/
+
+# --- 5. Node.js & Dependencies ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 coverage/
-.DS_Store
-*.log
+
+# --- 6. Secrets & Environment Configurations ---
 .env*
 !.env.example
+
+# --- 7. OS & Editor Artifacts ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.log
+.vscode/
+.idea/
+*.swp
+*.swo

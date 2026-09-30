@@ -185,10 +185,13 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         }}
     </style>
 </head>
-<body data-theme="catpuchin">
+<body data-theme="japanese indigo">
     <script>
         try {{
-            var t = localStorage.getItem('plantation_theme') || 'catpuchin';
+            var t = localStorage.getItem('plantation_theme') || 'japanese indigo';
+            if (['catpuchin', 'catppuccin', 'green olive', 'green-olive', 'adenium power', 'adenium-power'].indexOf(t.toLowerCase()) !== -1) {{
+                t = 'japanese indigo';
+            }}
             document.body.setAttribute('data-theme', t);
         }} catch(e) {{}}
     </script>

@@ -5,18 +5,7 @@
 /* --- 1. THEMES & COLOR TOKENS --- */
 :root { --font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace; }
 
-:root, [data-theme="catppuccin"], [data-theme="catpuchin"] {
-  --bg-base: #181926; --bg-mantle: #1e2030; --bg-crust: #11111b; --bg-surface: #24273a; --bg-surface-hover: #2e324a; --bg-overlay: #363a4f;
-  --border-dim: #363a4f; --border-active: #5b6078; --border-red: #ed8796;
-  --text-main: #cad3f5; --text-sub: #a5adcb; --text-dim: #6e738d;
-  --red-crimson: #ed8796; --red-dark: #3a2227; --red-border: #f38ba8;
-  --green-sage: #a6da95; --green-dark: #1f3325;
-  --blue-sky: #8aadf4; --blue-dark: #1d273d;
-  --peach-orange: #f5a97f; --peach-dark: #382923;
-  --info-field-color: #89dceb;
-}
-
-[data-theme="japanese-indigo"], [data-theme="japanese indigo"] {
+:root, [data-theme="japanese-indigo"], [data-theme="japanese indigo"] {
   --bg-base: #0b1120; --bg-mantle: #101a2e; --bg-crust: #070b16; --bg-surface: #16223b; --bg-surface-hover: #1f2f50; --bg-overlay: #293d66;
   --border-dim: #223454; --border-active: #3e5a8f; --border-red: #38bdf8;
   --text-main: #e2ebf9; --text-sub: #a5bada; --text-dim: #607599;
@@ -47,28 +36,6 @@
   --blue-sky: #00d2ff; --blue-dark: #00222f;
   --peach-orange: #ff9100; --peach-dark: #331c00;
   --info-field-color: #00f5d4;
-}
-
-[data-theme="green-olive"], [data-theme="green olive"] {
-  --bg-base: #141913; --bg-mantle: #1a2219; --bg-crust: #0d120c; --bg-surface: #222e20; --bg-surface-hover: #2d3b2b; --bg-overlay: #394a37;
-  --border-dim: #384935; --border-active: #5f7a5b; --border-red: #98b33b;
-  --text-main: #eff5ed; --text-sub: #bed0ba; --text-dim: #799074;
-  --red-crimson: #98b33b; --red-dark: #273010; --red-border: #b1d145;
-  --green-sage: #7fb865; --green-dark: #192b15;
-  --blue-sky: #6fa69c; --blue-dark: #152c28;
-  --peach-orange: #d1a84f; --peach-dark: #382c0f;
-  --info-field-color: #7dd3fc;
-}
-
-[data-theme="adenium-power"], [data-theme="adenium power"] {
-  --bg-base: #17121a; --bg-mantle: #1e1722; --bg-crust: #100b12; --bg-surface: #281d2f; --bg-surface-hover: #35263d; --bg-overlay: #463250;
-  --border-dim: #442a4d; --border-active: #78448a; --border-red: #ff2a85;
-  --text-main: #fdefef; --text-sub: #dfbed3; --text-dim: #996e8d;
-  --red-crimson: #ff2a85; --red-dark: #3a061d; --red-border: #ff5eaa;
-  --green-sage: #45e08b; --green-dark: #0d2b1a;
-  --blue-sky: #c078f4; --blue-dark: #281239;
-  --peach-orange: #ff7557; --peach-dark: #38150a;
-  --info-field-color: #45e08b;
 }
 
 [data-theme="unicorn"], [data-theme="unicorn-lover-pro-max"], [data-theme="unicorn lover pro max"] {

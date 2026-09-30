@@ -7,12 +7,9 @@ from .components import render_plants_grid
 
 
 THEMES = [
-    {"id": "japanese indigo", "icon": "🌊", "name": "Japanese Indigo", "desc": "藍染 Aizome · Índigo & cielo", "bg": "#0b1120", "accent": "#38bdf8"},
-    {"id": "catpuchin", "icon": "🌸", "name": "Catppuccin", "desc": "Mocha & Carmesí original", "bg": "#181926", "accent": "#ed8796"},
+    {"id": "japanese indigo", "icon": "🌊", "name": "Indigo", "desc": "藍染 Aizome · Índigo & cielo", "bg": "#0b1120", "accent": "#38bdf8"},
     {"id": "golden", "icon": "🏺", "name": "Golden", "desc": "Kintsugi · Oro & ámbar", "bg": "#17130e", "accent": "#f1b343"},
-    {"id": "darkerthanblack", "icon": "🌑", "name": "Darker Than Black", "desc": "OLED Noir · Negro & neón", "bg": "#000000", "accent": "#ff334b"},
-    {"id": "green olive", "icon": "🫒", "name": "Green Olive", "desc": "Aceituna · Verde oliva, salvia y bosque", "bg": "#141913", "accent": "#98b33b"},
-    {"id": "adenium power", "icon": "🌺", "name": "Adenium Power", "desc": "Desert Rose · Fucsia Adenium & carbón", "bg": "#17121a", "accent": "#ff2a85"},
+    {"id": "darkerthanblack", "icon": "🌑", "name": "Black", "desc": "OLED Noir · Negro & neón", "bg": "#000000", "accent": "#ff334b"},
     {"id": "unicorn", "icon": "🦄", "name": "Unicorn", "desc": "Pastel Synthwave · Lavanda, turquesa & neón", "bg": "#131124", "accent": "#ff66cc"},
 ]
 
@@ -47,7 +44,10 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <script>
         (function() {{
             try {{
-                var t = localStorage.getItem('plantation_theme') || 'catpuchin';
+                var t = localStorage.getItem('plantation_theme') || 'japanese indigo';
+                if (['catpuchin', 'catppuccin', 'green olive', 'green-olive', 'adenium power', 'adenium-power'].indexOf(t.toLowerCase()) !== -1) {{
+                    t = 'japanese indigo';
+                }}
                 document.documentElement.setAttribute('data-theme', t);
             }} catch(e) {{}}
         }})();
@@ -109,7 +109,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                         aria-haspopup="true"
                         aria-expanded="false"
                         title="Esquema de color">
-                    <span id="theme-btn-icon" style="font-size: 15px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">🌸</span>
+                    <span id="theme-btn-icon" style="font-size: 15px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">🌊</span>
                 </button>
                 <div id="theme-dropdown-menu" class="theme-dropdown-menu" style="display: none;">
                     <div class="theme-dropdown-header">ESQUEMA DE COLOR // PALETA</div>
@@ -255,11 +255,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <script>
         var THEMES = {{
             'japanese indigo': {{ icon: '🌊', name: 'Japanese Indigo' }},
-            'catpuchin': {{ icon: '🌸', name: 'Catppuccin' }},
             'golden': {{ icon: '🏺', name: 'Golden' }},
             'darkerthanblack': {{ icon: '🌑', name: 'Darker Than Black' }},
-            'green olive': {{ icon: '🫒', name: 'Green Olive' }},
-            'adenium power': {{ icon: '🌺', name: 'Adenium Power' }},
             'unicorn': {{ icon: '🦄', name: 'Unicorn' }},
             'unicorn lover pro max': {{ icon: '🦄', name: 'Unicorn' }}
         }};
@@ -273,10 +270,12 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         }}
 
         function applyTheme(themeName) {{
-            document.documentElement.setAttribute('data-theme', themeName);
             var key = (themeName || '').toLowerCase().replace(/-/g, ' ');
-            if (key === 'catppuccin') key = 'catpuchin';
-            var cfg = THEMES[key] || {{ icon: '🎨', name: themeName }};
+            if (['catpuchin', 'catppuccin', 'green olive', 'adenium power'].indexOf(key) !== -1 || !THEMES[key]) {{
+                key = 'japanese indigo';
+            }}
+            document.documentElement.setAttribute('data-theme', key);
+            var cfg = THEMES[key] || {{ icon: '🌊', name: 'Japanese Indigo' }};
             var iconEl = document.getElementById('theme-btn-icon');
             var btnEl = document.getElementById('theme-toggle-btn');
             if (iconEl) iconEl.textContent = cfg.icon;
@@ -318,9 +317,13 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         }});
 
         document.addEventListener('DOMContentLoaded', function() {{
-            var saved = 'catpuchin';
+            var saved = 'japanese indigo';
             try {{
-                saved = localStorage.getItem('plantation_theme') || 'catpuchin';
+                saved = localStorage.getItem('plantation_theme') || 'japanese indigo';
+                if (['catpuchin', 'catppuccin', 'green olive', 'adenium power'].indexOf(saved.toLowerCase()) !== -1) {{
+                    saved = 'japanese indigo';
+                    localStorage.setItem('plantation_theme', saved);
+                }}
             }} catch(e) {{}}
             applyTheme(saved);
         }});
