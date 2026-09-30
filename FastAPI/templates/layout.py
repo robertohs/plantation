@@ -42,7 +42,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plantation - Registro Botánico & Dossier PDF</title>
     <meta name="description" content="Gestor botánico y dossiers técnicos con SQLite, HTMX y exportación PDF." />
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css?v=20260930_4" />
     <script src="/static/htmx.min.js"></script>
     <script>
         (function() {{
@@ -161,7 +161,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 <div class="filter-divider"></div>
 
                 <div class="filter-group">
-                    <span class="filter-label">EDAD:</span>
+                    <span class="filter-label">EDAD (años):</span>
                     <button type="button"
                             class="status-pill age-filter-btn active"
                             onclick="applyPlantFilter('age', 'ALL', this)">
@@ -170,17 +170,17 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                     <button type="button"
                             class="status-pill status-pill-age age-filter-btn"
                             onclick="applyPlantFilter('age', 'less_1', this)">
-                        &lt; 1 AÑO
+                        &lt; 1 
                     </button>
                     <button type="button"
                             class="status-pill status-pill-age age-filter-btn"
                             onclick="applyPlantFilter('age', '1_to_2', this)">
-                        1 - 2 AÑOS
+                        1 - 2 
                     </button>
                     <button type="button"
                             class="status-pill status-pill-age age-filter-btn"
                             onclick="applyPlantFilter('age', '3_plus', this)">
-                        3+ AÑOS
+                        3+ 
                     </button>
                 </div>
 
@@ -444,101 +444,27 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             }}
         }});
 
-        // Plant Card Photo Carousel (Lazy + Hardware-Accelerated)
-        var _carouselTouchX = 0;
-        var _carouselTouchY = 0;
-
-        function preloadCarouselPhotos(carousel) {{
-            if (!carousel || carousel._preloaded) return;
-            carousel._preloaded = true;
-            var lazyImgs = carousel.querySelectorAll('img[data-src]');
-            for (var i = 0; i < lazyImgs.length; i++) {{
-                var img = lazyImgs[i];
-                var dsrc = img.getAttribute('data-src');
-                if (dsrc) {{
-                    img.src = dsrc;
-                    img.removeAttribute('data-src');
+        // Plant card keyboard accessibility (Enter/Space opens dossier)
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Enter' || e.key === ' ') {{
+                var card = e.target.closest && e.target.closest('.plant-card');
+                if (card && e.target === card) {{
+                    e.preventDefault();
+                    card.click();
                 }}
             }}
-        }}
+        }});
 
-        function handleCarouselTouchStart(e, carousel) {{
-            preloadCarouselPhotos(carousel);
-            if (e.touches && e.touches[0]) {{
-                _carouselTouchX = e.touches[0].clientX;
-                _carouselTouchY = e.touches[0].clientY;
-            }}
-        }}
-
-        function handleCarouselTouchEnd(e, carousel) {{
-            if (e.changedTouches && e.changedTouches[0]) {{
-                var diffX = e.changedTouches[0].clientX - _carouselTouchX;
-                var diffY = e.changedTouches[0].clientY - _carouselTouchY;
-                if (Math.abs(diffX) > 35 && Math.abs(diffY) < 60) {{
-                    if (e.cancelable) e.preventDefault();
-                    e.stopPropagation();
-                    if (diffX < 0) {{
-                        navigateCardCarousel(e, carousel, 1);
-                    }} else {{
-                        navigateCardCarousel(e, carousel, -1);
-                    }}
+        // Global delegated image error handler for plant thumbnails
+        document.addEventListener('error', function(e) {{
+            if (e.target && e.target.classList && e.target.classList.contains('card-thumbnail-img')) {{
+                e.target.style.display = 'none';
+                var placeholder = e.target.nextElementSibling;
+                if (placeholder && placeholder.classList.contains('card-thumbnail-placeholder')) {{
+                    placeholder.style.display = 'flex';
                 }}
             }}
-        }}
-
-        function navigateCardCarousel(event, el, delta) {{
-            if (event) {{
-                event.stopPropagation();
-                if (event.preventDefault && event.type !== 'touchend') event.preventDefault();
-            }}
-            var carousel = el.classList && el.classList.contains('plant-carousel') ? el : el.closest('.plant-carousel');
-            if (!carousel) return;
-            preloadCarouselPhotos(carousel);
-
-            var slides = carousel.querySelectorAll('.carousel-slide');
-            var dots = carousel.querySelectorAll('.carousel-dot');
-            var badge = carousel.querySelector('.carousel-count-badge');
-            var total = slides.length;
-            if (total <= 1) return;
-
-            var current = parseInt(carousel.getAttribute('data-current-index') || '0', 10);
-            var next = (current + delta + total) % total;
-            carousel.setAttribute('data-current-index', next);
-
-            for (var i = 0; i < total; i++) {{
-                slides[i].classList.toggle('active', i === next);
-                if (dots[i]) dots[i].classList.toggle('active', i === next);
-            }}
-            if (badge) {{
-                badge.textContent = (next + 1) + '/' + total;
-            }}
-        }}
-
-        function goToCardCarouselSlide(event, dot, index) {{
-            if (event) {{
-                event.stopPropagation();
-                if (event.preventDefault) event.preventDefault();
-            }}
-            var carousel = dot.closest('.plant-carousel');
-            if (!carousel) return;
-            preloadCarouselPhotos(carousel);
-
-            var slides = carousel.querySelectorAll('.carousel-slide');
-            var dots = carousel.querySelectorAll('.carousel-dot');
-            var badge = carousel.querySelector('.carousel-count-badge');
-            var total = slides.length;
-            if (index < 0 || index >= total) return;
-
-            carousel.setAttribute('data-current-index', index);
-
-            for (var i = 0; i < total; i++) {{
-                slides[i].classList.toggle('active', i === index);
-                if (dots[i]) dots[i].classList.toggle('active', i === index);
-            }}
-            if (badge) {{
-                badge.textContent = (index + 1) + '/' + total;
-            }}
-        }}
+        }}, true);
     </script>
 </body>
 </html>"""

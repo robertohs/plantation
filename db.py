@@ -71,21 +71,30 @@ def get_plant_age_months(sowing_cutting_date: Optional[str], graft: Optional[str
 
 
 def calculate_plant_age(sowing_cutting_date: Optional[str], graft: Optional[str] = "", now: Optional[datetime] = None) -> Tuple[str, str]:
-    """Returns (short_display, detailed_display) for plant age."""
+    """
+    Returns (short_display, detailed_display) for plant age using natural decimal years (Option C):
+      - Strictly '{years:.1f} años' for all specimens with a known date (e.g. '0.0 años', '4.0 años', '4.5 años')
+      - '—' for unknown / unregistered
+      - Detailed breakdown in second return value for tooltips and technical dossiers
+    """
     months = get_plant_age_months(sowing_cutting_date, graft, now)
     if months is None:
         return "—", "Sin fecha de siembra o injerto"
-    if months == 0:
-        return "0 meses", "0 meses (Recién sembrada / injertada)"
-    if months < 12:
-        lbl = f"{months} mes" if months == 1 else f"{months} meses"
-        return lbl, f"{lbl} (Total: {months} meses)"
+
     y, rem = divmod(months, 12)
-    y_lbl = f"{y} año" if y == 1 else f"{y} años"
-    if rem == 0:
-        return f"{y_lbl} ({months} m)", f"{y_lbl} (Total: {months} meses)"
-    rem_lbl = f"{rem} mes" if rem == 1 else f"{rem} meses"
-    return f"{y_lbl}, {rem_lbl} ({months} m)", f"{y_lbl}, {rem_lbl} (Total: {months} meses)"
+    if months == 0:
+        det_lbl = "0 meses (Recién sembrada / injertada)"
+    elif rem == 0:
+        y_lbl = f"{y} año" if y == 1 else f"{y} años"
+        det_lbl = f"{y_lbl} (Total: {months} meses)"
+    else:
+        y_lbl = f"{y} año" if y == 1 else f"{y} años"
+        det_lbl = f"{y_lbl}, {rem} {'mes' if rem == 1 else 'meses'} (Total: {months} meses)"
+
+    years_decimal = round(months / 12.0, 1)
+    short_lbl = f"{years_decimal:.1f} años"
+
+    return short_lbl, det_lbl
 
 
 def calculate_age_display(sowing_cutting_date: Optional[str], graft: Optional[str] = "") -> str:
@@ -150,6 +159,37 @@ def extract_height_cm(val: Optional[str]) -> Optional[float]:
             pass
 
     return None
+
+
+def format_height_short(val: Optional[str]) -> str:
+    """
+    Extracts strictly the numerical 'cm' part for plant cards on the main page.
+    Strips any date of measure (e.g. '2026-09-29 - 0 cm' -> '0 cm', '2025-06-15 - 4.8 cm' -> '4.8 cm').
+    """
+    if not val or not isinstance(val, str) or not val.strip():
+        return "—"
+
+    text = val.strip()
+
+    # If explicit cm match after any date prefix
+    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*cm\b', text, re.IGNORECASE)
+    if cm_match:
+        return f"{cm_match.group(1)} cm"
+
+    num = extract_height_cm(text)
+    if num is not None:
+        if num == int(num) and ".0" not in text:
+            return f"{int(num)} cm"
+        return f"{num:g} cm"
+
+    # If date prefix exists like 'YYYY-MM-DD - something', take the right segment
+    if '-' in text:
+        parts = text.split('-')
+        last_seg = parts[-1].strip()
+        if last_seg:
+            return last_seg if 'cm' in last_seg.lower() else f"{last_seg} cm"
+
+    return text
 
 
 def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:

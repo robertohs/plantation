@@ -40,7 +40,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                 <td style="text-align: center;">
                     <input type="checkbox" name="keys" value="{p.get('name')}" class="admin-checkbox" />
                 </td>
-                <td style="font-weight: bold; color: var(--red-crimson);">{p.get('name')}</td>
+                <td><span class="plant-key" style="font-size: 13px; color: #ff66cc;">{p.get('name')}</span></td>
                 <td>{aka_display}</td>
                 <td style="font-style: italic; color: var(--blue-sky); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{p.get('species')}">{p.get('species')}</td>
                 <td><span class="status-badge {status_cls}" style="font-size: 9.5px;">● {status_es}</span></td>
@@ -151,6 +151,12 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                    download
                    title="Descargar copia de seguridad instantánea de la base de datos SQLite (.db)">
                     💾 [BACKUP DB]
+                </a>
+                <a class="btn btn-sm btn-primary"
+                   href="/admin/archive.zip"
+                   download
+                   title="Descargar archivo completo (.zip) con la base de datos y todas las fotografías">
+                    📦 [ARCHIVO COMPLETO .ZIP]
                 </a>
             </div>
         </div>

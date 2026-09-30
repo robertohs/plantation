@@ -3,6 +3,7 @@ Plantation - Modular UI Components
 Contains reusable cards, thumbnails, grid wrappers, and statistics ribbons.
 """
 
+import html
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 import db
@@ -66,149 +67,85 @@ def render_editable_photo_item_html(plant_name: str, ph: str, idx: int) -> str:
 
 
 def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
-    """Renders a single plant card with bounded headers, concise Alias badge, and thumbnail preview."""
+    """Renders a streamlined, performant plant card."""
+    name = html.escape(str(p.get("name") or ""))
+    species = html.escape(str(p.get("species") or ""))
+    aka = html.escape(str(p.get("aka") or "").strip())
     status = db.normalize_status(p.get("status"))
     status_cls = STATUS_BADGE_CLASSES.get(status, "status-OK")
     status_es = STATUS_SPANISH.get(status, status)
 
-    plant_key = p.get("name", "")
-    raw_photos = p.get("photos", [])
-    # Reverse-chronological order specifically for card carousel: latest photo added is shown first
-    photos = list(reversed(raw_photos)) if raw_photos else []
-    if not photos or len(photos) == 0:
-        thumb_img = f"""
-            <div class="card-thumbnail-box plant-thumb-wrapper no-photo">
-                <div class="card-thumbnail-placeholder">
-                    <div class="placeholder-icon">🌱</div>
-                    <div class="placeholder-text">SIN FOTOGRAFÍA</div>
-                    <div class="placeholder-sub">CLAVE: {plant_key}</div>
-                </div>
-            </div>
-        """
-    elif len(photos) == 1:
-        first_img = photos[0]
-        thumb_img = f"""
-            <div class="card-thumbnail-box plant-thumb-wrapper">
-                <img class="card-thumbnail-img plant-thumb"
-                     src="/images/{first_img}"
-                     alt="{plant_key}"
-                     loading="lazy"
-                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                <div class="card-thumbnail-placeholder" style="display: none;">
-                    <div class="placeholder-icon">🌱</div>
-                    <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
-                </div>
-                <span class="thumbnail-badge-count photo-count-pill">1 FOTO</span>
-            </div>
-        """
-    else:
+    # Photos: latest cover image + count pill
+    photos = p.get("photos") or []
+    if photos:
+        cover_img = html.escape(str(photos[-1]))
         total_p = len(photos)
-        slides_list = []
-        dots_list = []
-        for idx, ph in enumerate(photos):
-            active_cls = " active" if idx == 0 else ""
-            src_attr = f'src="/images/{ph}"' if idx == 0 else f'data-src="/images/{ph}"'
-            slides_list.append(f"""
-                <div class="carousel-slide{active_cls}" data-slide-index="{idx}">
-                    <img class="card-thumbnail-img plant-thumb"
-                         {src_attr}
-                         alt="{plant_key} ({idx+1}/{total_p})"
-                         loading="lazy"
-                         decoding="async"
-                         onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                    <div class="card-thumbnail-placeholder" style="display: none;">
-                        <div class="placeholder-icon">🌱</div>
-                        <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
-                    </div>
-                </div>
-            """)
-            dots_list.append(f"""
-                <button type="button"
-                        class="carousel-dot{active_cls}"
-                        data-dot-index="{idx}"
-                        onclick="goToCardCarouselSlide(event, this, {idx})"
-                        aria-label="Foto {idx+1} de {total_p}"
-                        title="Foto {idx+1} de {total_p}"></button>
-            """)
-
-        slides_html = "".join(slides_list)
-        dots_html = "".join(dots_list)
-        thumb_img = f"""
-            <div class="card-thumbnail-box plant-thumb-wrapper plant-carousel"
-                 id="carousel-{plant_key}"
-                 data-current-index="0"
-                 onmouseenter="preloadCarouselPhotos(this)"
-                 onfocusin="preloadCarouselPhotos(this)"
-                 ontouchstart="handleCarouselTouchStart(event, this)"
-                 ontouchend="handleCarouselTouchEnd(event, this)">
-                <div class="carousel-track">
-                    {slides_html}
-                </div>
-                <button type="button"
-                        class="carousel-nav-btn carousel-prev"
-                        onclick="navigateCardCarousel(event, this, -1)"
-                        aria-label="Foto anterior"
-                        title="Foto anterior">‹</button>
-                <button type="button"
-                        class="carousel-nav-btn carousel-next"
-                        onclick="navigateCardCarousel(event, this, 1)"
-                        aria-label="Siguiente foto"
-                        title="Siguiente foto">›</button>
-                <div class="carousel-indicators">
-                    {dots_html}
-                </div>
-                <span class="thumbnail-badge-count photo-count-pill carousel-count-badge">1/{total_p}</span>
+        count_pill = f'<span class="thumbnail-badge-count photo-count-pill">{total_p} {"FOTO" if total_p == 1 else "FOTOS"}</span>'
+        thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper">
+            <img class="card-thumbnail-img plant-thumb" src="/images/{cover_img}" alt="{name}" loading="lazy" />
+            <div class="card-thumbnail-placeholder" style="display: none;">
+                <div class="placeholder-icon">🌱</div>
+                <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
             </div>
-        """
+            {count_pill}
+        </div>"""
+    else:
+        thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper no-photo">
+            <div class="card-thumbnail-placeholder">
+                <div class="placeholder-icon">🌱</div>
+                <div class="placeholder-text">SIN FOTOGRAFÍA</div>
+                <div class="placeholder-sub">CLAVE: {name}</div>
+            </div>
+        </div>"""
 
-    age_short, _ = db.calculate_plant_age(p.get("sowing_cutting_date"), p.get("graft", ""))
+    # Formatted age and height
+    age_short, age_detailed = db.calculate_plant_age(p.get("sowing_cutting_date"), p.get("graft", ""))
+    raw_height = p.get("height") or ""
+    height_short = db.format_height_short(raw_height)
 
-    aka = (p.get("aka") or "").strip()
     aka_html = f'<span class="plant-aka" title=\'Alias: "{aka}"\'>"{aka}"</span>' if aka else ""
-
     oob_attr = ' hx-swap-oob="outerHTML"' if oob else ""
 
-    return f"""
-    <div class="plant-card" id="plant-card-{p.get('name')}"{oob_attr}
-         hx-get="/plants/{p.get('name')}"
+    loc = html.escape(str(p.get("location") or "—"))
+    graft = html.escape(str(p.get("graft") or "Raíz propia"))
+    raw_h_esc = html.escape(str(raw_height or "Sin registrar"))
+    det_age_esc = html.escape(str(age_detailed))
+
+    return f"""<article class="plant-card" id="plant-card-{name}"{oob_attr}
+         hx-get="/plants/{name}"
          hx-target="#modal-container"
          hx-swap="innerHTML"
          role="button"
          tabindex="0"
-         onkeydown="if(event.key==='Enter'||event.key===' '){{event.preventDefault();this.click();}}"
-         title="Abrir expediente de {p.get('name')}">
+         title="Abrir expediente de {name}">
         <div class="card-head">
             <div class="card-head-left">
-                <span class="plant-key" title="Clave de ejemplar">{p.get('name')}</span>
+                <span class="plant-key" title="Clave de ejemplar">{name}</span>
                 <span class="status-badge {status_cls}">● {status_es}</span>
                 {aka_html}
             </div>
         </div>
-
-        {thumb_img}
-
-        <div class="plant-species" title="{p.get('species')}">{p.get('species')}</div>
-
+        {thumb_html}
+        <div class="plant-species" title="{species}">{species}</div>
         <div class="plant-meta">
-            <div>
+            <div title="Edad biológica: {det_age_esc}">
                 <span class="meta-label">EDAD:</span>
                 <span class="meta-val age-highlight">{age_short}</span>
             </div>
-            <div>
+            <div title="Ubicación: {loc}">
                 <span class="meta-label">UBI:</span>
-                <span class="meta-val">{p.get('location') or '—'}</span>
+                <span class="meta-val">{loc}</span>
             </div>
-            <div>
+            <div title="Injerto: {graft}">
                 <span class="meta-label">INJERTO:</span>
-                <span class="meta-val">{p.get('graft') or 'Raíz propia'}</span>
+                <span class="meta-val">{graft}</span>
             </div>
-            <div>
+            <div title="Registro completo de altura: {raw_h_esc}">
                 <span class="meta-label">ALTURA:</span>
-                <span class="meta-val" style="color: var(--green-sage);">{p.get('height') or '—'}</span>
+                <span class="meta-val height-highlight">{height_short}</span>
             </div>
         </div>
-    </div>
-    """
+    </article>"""
 
 
 PAGE_SIZE = 4

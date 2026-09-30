@@ -269,7 +269,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
         <div class="modal-dialog">
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <span class="modal-title">[EXPEDIENTE TÉCNICO: {plant.get('name')}]</span>
+                    <span class="modal-title">[EXPEDIENTE TÉCNICO: <span class="plant-key" style="color: #ff66cc !important;">{plant.get('name')}</span>]</span>
                     <span class="status-badge {status_cls}">● {status_es}</span>
                 </div>
                 <button class="modal-close-btn"
@@ -288,7 +288,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                         {plant.get('species')}
                     </div>
                     <div style="font-size: 12px; color: var(--text-sub); display: flex; gap: 14px; flex-wrap: wrap; align-items: center;">
-                        <span>CLAVE: <strong style="color: var(--text-main); font-weight: 700;">[{plant.get('name')}]</strong></span>
+                        <span>CLAVE: <strong class="plant-key" style="color: #ff66cc !important; font-weight: 700;">[{plant.get('name')}]</strong></span>
                         <span>ALIAS: {aka_badge}</span>
                         <span>UBICACIÓN: <span style="color: var(--text-main); font-weight: 600;">{plant.get('location') or 'Sin registrar'}</span></span>
                     </div>
@@ -573,7 +573,7 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
     <div class="modal-overlay" id="edit-plant-modal">
         <div class="modal-dialog">
             <div class="modal-header">
-                <span class="modal-title">✏ [MODIFICAR DATOS: {plant.get('name')}]</span>
+                <span class="modal-title">✏ [MODIFICAR DATOS: <span class="plant-key" style="color: #ff66cc !important;">{plant.get('name')}</span>]</span>
                 <button class="modal-close-btn"
                         hx-get="/plants/{plant.get('name')}"
                         hx-target="#modal-container"

@@ -19,6 +19,7 @@ CLR_MUTED = (100, 116, 139)      # Slate Gray
 CLR_BORDER = (203, 213, 225)     # Light Slate Border
 CLR_ROW_ALT = (248, 250, 252)    # Subtle table alternate row
 CLR_PEACH = (194, 65, 12)        # Terracotta / Peach accent for Alias
+CLR_UNICORN_PINK = (255, 102, 204) # #ff66cc - Unicorn Pink for Plant Keys
 CLR_OK_BG = (220, 252, 231)      # Soft green badge
 CLR_OK_TXT = (22, 101, 52)
 CLR_NOTOK_BG = (254, 226, 226)   # Soft red badge
@@ -209,7 +210,7 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
     # Clave
     pdf.set_xy(20, start_y + 3)
     pdf.set_font("Helvetica", "B", 18)
-    pdf.set_text_color(*CLR_PRIMARY)
+    pdf.set_text_color(*CLR_UNICORN_PINK)
     pdf.cell(50, 8, f"[{name}]", border=0, ln=0, align="L")
 
     # Alias prominently next to clave
@@ -518,7 +519,7 @@ def generate_catalog_pdf(plants: list, title: str = "CATÁLOGO GENERAL DE EJEMPL
         p_date = safe_text(plant.get("sowing_cutting_date", ""))
 
         pdf.set_font("Helvetica", "B", 7.5)
-        pdf.set_text_color(*CLR_PRIMARY)
+        pdf.set_text_color(*CLR_UNICORN_PINK)
         pdf.cell(cols[0][1], 5.8, p_name, border=0, ln=0, align="C")
 
         pdf.set_font("Helvetica", "B" if p_aka else "", 7.5)

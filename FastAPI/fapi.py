@@ -596,6 +596,39 @@ def download_database_backup():
     )
 
 
+@router.get("/admin/archive.zip")
+def download_full_archive():
+    """Generates an all-in-one ZIP archive containing the SQLite database backup and all registered plant photos."""
+    import tempfile
+    import zipfile
+
+    backup_file = db.backup_db()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_filename = f"plantation_full_archive_{timestamp}.zip"
+
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_zip_path = temp_zip.name
+    temp_zip.close()
+
+    with zipfile.ZipFile(temp_zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.write(backup_file, arcname="plantation.db")
+        if os.path.exists(IMAGES_DIR):
+            for img_name in sorted(os.listdir(IMAGES_DIR)):
+                img_path = os.path.join(IMAGES_DIR, img_name)
+                if os.path.isfile(img_path) and not img_name.startswith("."):
+                    zf.write(img_path, arcname=f"Images/{img_name}")
+
+    return FileResponse(
+        temp_zip_path,
+        media_type="application/zip",
+        filename=archive_filename,
+        headers={
+            "Content-Disposition": f'attachment; filename="{archive_filename}"',
+            "Cache-Control": "no-cache"
+        }
+    )
+
+
 # ==============================================================================
 # IMAGES, MODAL CLOSE & PRINTABLE DOSSIER
 # ==============================================================================

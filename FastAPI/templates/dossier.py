@@ -91,6 +91,10 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
             color: var(--blue-sky);
             margin: 6px 0;
         }}
+        .plant-key {{
+            color: #ff66cc !important;
+            font-weight: 700;
+        }}
         .dossier-table {{
             width: 100%;
             border-collapse: collapse;
@@ -203,7 +207,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
             <div style="font-size: 11px; color: var(--red-crimson); font-weight: bold; letter-spacing: 1px;">IDENTIFICADOR</div>
             <div class="dossier-species">{plant.get('species')}</div>
             <div style="font-size: 13px; color: var(--text-main); display: flex; gap: 14px; flex-wrap: wrap;">
-                <span>CLAVE DE COLECCIÓN: <strong style="color: var(--red-crimson);">[{plant.get('name')}]</strong></span>
+                <span>CLAVE DE COLECCIÓN: <strong class="plant-key" style="color: #ff66cc !important;">[{plant.get('name')}]</strong></span>
                 {aka_display}
             </div>
         </div>
