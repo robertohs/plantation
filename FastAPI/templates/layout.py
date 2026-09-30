@@ -13,7 +13,7 @@ THEMES = [
     {"id": "darkerthanblack", "icon": "🌑", "name": "Darker Than Black", "desc": "OLED Noir · Negro & neón", "bg": "#000000", "accent": "#ff334b"},
     {"id": "green olive", "icon": "🫒", "name": "Green Olive", "desc": "Aceituna · Verde oliva, salvia y bosque", "bg": "#141913", "accent": "#98b33b"},
     {"id": "adenium power", "icon": "🌺", "name": "Adenium Power", "desc": "Desert Rose · Fucsia Adenium & carbón", "bg": "#17121a", "accent": "#ff2a85"},
-    {"id": "unicorn lover pro max", "icon": "🦄", "name": "Unicorn Lover Pro Max", "desc": "Pastel Synthwave · Lavanda, turquesa & neón", "bg": "#131124", "accent": "#ff66cc"},
+    {"id": "unicorn", "icon": "🦄", "name": "Unicorn", "desc": "Pastel Synthwave · Lavanda, turquesa & neón", "bg": "#131124", "accent": "#ff66cc"},
 ]
 
 
@@ -260,7 +260,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             'darkerthanblack': {{ icon: '🌑', name: 'Darker Than Black' }},
             'green olive': {{ icon: '🫒', name: 'Green Olive' }},
             'adenium power': {{ icon: '🌺', name: 'Adenium Power' }},
-            'unicorn lover pro max': {{ icon: '🦄', name: 'Unicorn Lover Pro Max' }}
+            'unicorn': {{ icon: '🦄', name: 'Unicorn' }},
+            'unicorn lover pro max': {{ icon: '🦄', name: 'Unicorn' }}
         }};
 
         function selectTheme(themeName) {{
