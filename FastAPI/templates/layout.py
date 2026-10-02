@@ -60,6 +60,112 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         }}
         window.addEventListener('resize', updateHeaderOffset);
         document.addEventListener('DOMContentLoaded', updateHeaderOffset);
+
+        function autoFormatHeightInput(el) {{
+            if (!el) return;
+            var raw = el.value.trim();
+            if (!raw) return;
+            var today = new Date().toISOString().slice(0, 10);
+            var fullMatch = raw.match(/^([\d.,]+)\s*(?:cm)?\s*\(\s*(\d{4}-\d{2}-\d{2})\s*\)$/i);
+            if (fullMatch) {{
+                var n = fullMatch[1].replace(',', '.');
+                el.value = n + ' cm (' + fullMatch[2] + ')';
+                return;
+            }}
+            var legMatch = raw.match(/^(\d{4}-\d{2}-\d{2})\s*-\s*([\d.,]+)\s*(?:cm)?$/i);
+            if (legMatch) {{
+                var n = legMatch[2].replace(',', '.');
+                el.value = n + ' cm (' + legMatch[1] + ')';
+                return;
+            }}
+            var numMatch = raw.match(/(\d+(?:[.,]\d+)?)/);
+            if (numMatch) {{
+                var n = numMatch[1].replace(',', '.');
+                el.value = n + ' cm (' + today + ')';
+            }} else {{
+                el.value = raw + ' (' + today + ')';
+            }}
+        }}
+
+        function setCareFieldToday(inputId) {{
+            var el = document.getElementById(inputId);
+            if (!el) return;
+            var today = new Date().toISOString().slice(0, 10);
+            var raw = el.value.trim();
+            if (!raw) {{
+                el.value = today;
+            }} else {{
+                var match = raw.match(/^(\d{4}-\d{2}-\d{2})?\s*(?:[-/(]\s*(.*?)\s*[)]?)?$/);
+                if (match && match[2]) {{
+                    el.value = today + ' (' + match[2] + ')';
+                }} else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {{
+                    el.value = today;
+                }} else {{
+                    el.value = today + ' (' + raw + ')';
+                }}
+            }}
+            el.focus();
+            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
+
+        function autoEnsureCareDate(el) {{
+            if (!el) return;
+            var raw = el.value.trim();
+            if (!raw) return;
+            var today = new Date().toISOString().slice(0, 10);
+            var dateMatch = raw.match(/^\d{4}-\d{2}-\d{2}/);
+            if (!dateMatch) {{
+                el.value = today + ' (' + raw + ')';
+            }}
+        }}
+
+        function updateCombinedPadres() {{
+            var p1 = document.getElementById('inp-padre1');
+            var p2 = document.getElementById('inp-padre2');
+            var target = document.getElementById('inp-padres');
+            var preview = document.getElementById('padres-preview-text');
+            if (!p1 || !p2 || !target || !preview) return;
+
+            var v1 = (p1.value || '').trim();
+            var v2 = (p2.value || '').trim();
+
+            var isUnk1 = (!v1) || (v1.toLowerCase() === 'unknown') || (v1.toLowerCase() === 'desconocido');
+            var isUnk2 = (!v2) || (v2.toLowerCase() === 'unknown') || (v2.toLowerCase() === 'desconocido');
+
+            var combined = '';
+            if (isUnk1 && isUnk2) {{
+                combined = 'unknown';
+            }} else {{
+                var part1 = isUnk1 ? 'unknown' : v1;
+                var part2 = isUnk2 ? 'unknown' : v2;
+                combined = part1 + ' × ' + part2;
+            }}
+
+            target.value = combined;
+            preview.textContent = combined;
+        }}
+
+        function clearSingleParent(num) {{
+            var inp = document.getElementById('inp-padre' + num);
+            var feedback = document.getElementById('padre' + num + '-validation-feedback');
+            if (inp) {{
+                inp.value = '';
+                inp.style.borderColor = 'var(--border-dim)';
+            }}
+            if (feedback) {{
+                feedback.innerHTML = '<span style="color: var(--text-dim); font-size: 11px;">✓ Sin parental seleccionado (default: "unknown")</span>';
+            }}
+            var btn1 = document.getElementById('new-plant-submit-btn');
+            var btn2 = document.getElementById('edit-plant-submit-btn');
+            if (btn1) btn1.disabled = false;
+            if (btn2) btn2.disabled = false;
+            updateCombinedPadres();
+        }}
+
+        function clearParentsInputs() {{
+            clearSingleParent(1);
+            clearSingleParent(2);
+        }}
     </script>
 </head>
 <body>

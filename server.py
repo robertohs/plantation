@@ -20,6 +20,8 @@ mimetypes.add_type("image/png", ".png")
 mimetypes.add_type("image/gif", ".gif")
 mimetypes.add_type("image/svg+xml", ".svg")
 
+from contextlib import asynccontextmanager
+
 import db
 import img_conv
 from FastAPI.fapi import router as fapi_router
@@ -28,20 +30,22 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "FastAPI", "static")
 IMAGES_DIR = os.path.join(BASE_DIR, "Images")
 
-# Initialize database schema and default seeds
-db.init_db()
 
-# Start background backup scheduler (every 12 hours)
-db.start_backup_scheduler(interval_seconds=43200)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Executes atomic startup initialization cleanly without duplicate imports."""
+    db.init_db()
+    db.start_backup_scheduler(interval_seconds=43200)
+    img_conv.ensure_images_dir()
+    img_conv.generate_seed_photos_if_missing()
+    yield
 
-# Ensure images directory and sample illustrations
-img_conv.ensure_images_dir()
-img_conv.generate_seed_photos_if_missing()
 
 app = FastAPI(
     title="Plantation",
     description="Welcome!",
-    version="0.0.1"
+    version="0.0.1",
+    lifespan=lifespan
 )
 
 # Mount Static CSS and Images folders
@@ -60,14 +64,14 @@ def main():
     args, unknown = parser.parse_known_args()
 
     print(f"==================================================")
-    print(f"  PLANTATION -       ")
+    print(f"  PLANTATION BOTANICAL ARCHIVE                   ")
     print(f"  Serving on: http://{args.host}:{args.port}      ")
     print(f"  Database:   DB/plantation.db                   ")
     print(f"  Images:     Images/                            ")
     print(f"==================================================")
 
     uvicorn.run(
-        "server:app",
+        app,
         host=args.host,
         port=args.port,
         reload=False,

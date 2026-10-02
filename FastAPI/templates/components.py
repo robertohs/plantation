@@ -148,7 +148,7 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
     </article>"""
 
 
-PAGE_SIZE = 4
+PAGE_SIZE = 16
 
 
 def build_plants_scroll_qs(

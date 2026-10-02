@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,16 +19,74 @@ SEEDS_FILE = os.path.join(DB_DIR, "seeds.json")
 
 VALID_STATUSES = ["OK", "notOK"]
 
+_db_lock = threading.Lock()
 
-def get_connection() -> sqlite3.Connection:
-    """Returns a thread-safe connection to SQLite with WAL mode, busy timeout, and row_factory."""
+
+def _open_raw_connection(path: str = DB_PATH) -> sqlite3.Connection:
+    """Low-level SQLite connection opener with WAL, timeouts, and row factory."""
     os.makedirs(DB_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=15.0)
+    conn = sqlite3.connect(path, timeout=15.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
     conn.execute("PRAGMA synchronous = NORMAL;")
     conn.execute("PRAGMA busy_timeout = 10000;")
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
+
+
+_db_initialized = False
+
+
+def ensure_db_ready() -> None:
+    """
+    CRITICAL: Guarantees that if the database file is missing, empty, or uninitialized
+    at runtime (e.g. if a user deleted plantation.db while the app was running),
+    it is IMMEDIATELY recreated and default specimens are seeded seamlessly.
+    Optimized with a fast-path to prevent locking and query churning on high-frequency calls.
+    """
+    global _db_initialized
+    if _db_initialized and os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0:
+        return
+
+    with _db_lock:
+        if _db_initialized and os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0:
+            return
+
+        needs_init = False
+        if not os.path.exists(DB_PATH) or os.path.getsize(DB_PATH) == 0:
+            needs_init = True
+        else:
+            try:
+                test_conn = _open_raw_connection()
+                try:
+                    cur = test_conn.cursor()
+                    cur.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='plants'")
+                    if not cur.fetchone():
+                        needs_init = True
+                    else:
+                        cur.execute("SELECT 1 FROM plants LIMIT 1")
+                        if not cur.fetchone():
+                            needs_init = True
+                finally:
+                    test_conn.close()
+            except Exception:
+                needs_init = True
+
+        if needs_init:
+            print("[DATABASE] DB file missing or empty. Auto-initializing and loading default specimens...")
+            init_db()
+
+        _db_initialized = True
+
+
+
+def get_connection() -> sqlite3.Connection:
+    """
+    Returns a thread-safe connection to SQLite.
+    Always checks that the DB file is initialized and populated before returning.
+    """
+    ensure_db_ready()
+    return _open_raw_connection()
 
 
 def normalize_status(val: Optional[str]) -> str:
@@ -132,8 +191,8 @@ def extract_height_cm(val: Optional[str]) -> Optional[float]:
     if not text:
         return None
 
-    # Case 1: Value with explicit 'cm' unit (e.g. '4.8 cm', '12cm')
-    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*cm\b', text, re.IGNORECASE)
+    # Case 1: Value with explicit 'cm' unit (e.g. '4.8 cm', '12cm', '40, cm')
+    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*,?\s*cm\b', text, re.IGNORECASE)
     if cm_match:
         try:
             return float(cm_match.group(1).replace(',', '.'))
@@ -150,8 +209,8 @@ def extract_height_cm(val: Optional[str]) -> Optional[float]:
             except ValueError:
                 pass
 
-    # Case 3: Standalone numeric entry (e.g. '28.5')
-    direct_match = re.match(r'^\s*(\d+(?:[.,]\d+)?)\s*$', text)
+    # Case 3: Standalone numeric entry (e.g. '28.5', '40')
+    direct_match = re.search(r'^\s*(\d+(?:[.,]\d+)?)\s*(?:,|cm)?\s*$', text, re.IGNORECASE)
     if direct_match:
         try:
             return float(direct_match.group(1).replace(',', '.'))
@@ -172,7 +231,7 @@ def format_height_short(val: Optional[str]) -> str:
     text = val.strip()
 
     # If explicit cm match after any date prefix
-    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*cm\b', text, re.IGNORECASE)
+    cm_match = re.search(r'(\d+(?:[.,]\d+)?)\s*,?\s*cm\b', text, re.IGNORECASE)
     if cm_match:
         return f"{cm_match.group(1)} cm"
 
@@ -190,6 +249,102 @@ def format_height_short(val: Optional[str]) -> str:
             return last_seg if 'cm' in last_seg.lower() else f"{last_seg} cm"
 
     return text
+
+
+def format_height_entry(val: Optional[str], old_val: Optional[str] = None, force_date: bool = False) -> str:
+    """
+    Normalizes plant height and ensures current date is automatically recorded.
+    Target format: '<dimension> cm (YYYY-MM-DD)'
+    E.g. '40'       -> '40 cm (2026-09-30)'
+         '40 cm'    -> '40 cm (2026-09-30)'
+         '40, cm'   -> '40 cm (2026-09-30)'
+         '15.5'     -> '15.5 cm (2026-09-30)'
+    """
+    if not val:
+        return ""
+    s = str(val).strip()
+    if not s:
+        return ""
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # If the user already provided format 'X cm (YYYY-MM-DD)'
+    m_full = re.match(r"^([\d.,]+)\s*(?:cm)?\s*\(\s*(\d{4}-\d{2}-\d{2})\s*\)$", s, re.IGNORECASE)
+    if m_full:
+        num_str = m_full.group(1).replace(",", ".")
+        dt = m_full.group(2)
+        if old_val:
+            old_num = extract_height_cm(old_val)
+            new_num = extract_height_cm(num_str)
+            if old_num is not None and new_num is not None and abs(old_num - new_num) > 1e-4:
+                return f"{num_str} cm ({today_str})"
+        return f"{num_str} cm ({dt})"
+
+    # If legacy format 'YYYY-MM-DD - X cm'
+    m_legacy = re.match(r"^(\d{4}-\d{2}-\d{2})\s*-\s*([\d.,]+)\s*(?:cm)?$", s, re.IGNORECASE)
+    if m_legacy:
+        dt = m_legacy.group(1)
+        num_str = m_legacy.group(2).replace(",", ".")
+        if old_val:
+            old_num = extract_height_cm(old_val)
+            new_num = extract_height_cm(num_str)
+            if old_num is not None and new_num is not None and abs(old_num - new_num) > 1e-4:
+                return f"{num_str} cm ({today_str})"
+        return f"{num_str} cm ({dt})"
+
+    # Clean accidental input such as '40, cm' -> '40 cm'
+    cleaned = re.sub(r'(\d+)\s*,\s*cm\b', r'\1 cm', s, flags=re.IGNORECASE)
+
+    # If numeric dimension is present, extract it
+    num_val = extract_height_cm(cleaned)
+    if num_val is not None:
+        if num_val == int(num_val) and "." not in cleaned and ("," not in cleaned or "cm" in cleaned.lower()):
+            num_display = str(int(num_val))
+        else:
+            num_display = f"{num_val:g}"
+
+        # If updating and value hasn't changed, retain previous unless force_date
+        if old_val and s.strip() == str(old_val).strip() and not force_date:
+            return old_val
+
+        return f"{num_display} cm ({today_str})"
+
+    if old_val and s.strip() == str(old_val).strip() and not force_date:
+        return old_val
+    return f"{s} ({today_str})"
+
+
+def format_care_entry(val: Optional[str], old_val: Optional[str] = None, force_date: bool = False) -> str:
+    """
+    Normalizes pruning and repotting entries to ensure the date (YYYY-MM-DD) is automatically saved.
+    E.g. ''                      -> '' (unmodified/blank)
+         'Poda de raíces'        -> '2026-09-30 (Poda de raíces)'
+         '2025-02-14'            -> '2025-02-14' (preserved if unchanged)
+         '2026-09-30 (Pómice)'   -> '2026-09-30 (Pómice)'
+    """
+    if not val:
+        return ""
+    s = str(val).strip()
+    if not s:
+        return ""
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # If unchanged from old_val, keep as-is
+    if old_val and s == str(old_val).strip() and not force_date:
+        return old_val
+
+    # Check if starts with a date YYYY-MM-DD
+    m_date = re.match(r"^(\d{4}-\d{2}-\d{2})(?:\s*[-/(]\s*(.*?)\s*[)]?)?$", s)
+    if m_date:
+        dt = m_date.group(1)
+        notes = (m_date.group(2) or "").strip()
+        if notes:
+            return f"{dt} ({notes})"
+        return dt
+
+    # Notes without a date -> prepend today's date
+    return f"{today_str} ({s})"
 
 
 def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:
@@ -215,6 +370,64 @@ def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:
     return True
 
 
+def split_parents(padres: Optional[str]) -> Tuple[str, str]:
+    """
+    Splits a plant's lineage string into two individual parent keys:
+    (Parent 1 / Mother, Parent 2 / Father).
+    Returns clean keys; if a parent was 'unknown', returns empty string so the field can be edited.
+    """
+    if not padres:
+        return "", ""
+    s = str(padres).strip()
+    if not s or s.lower() in ("unknown", "desconocido", "none", "null", "--"):
+        return "", ""
+
+    # Split on botanical cross notation
+    match = re.split(r"\s+(?:[×xX]|\+|\/)\s+", s, maxsplit=1)
+    if len(match) == 2:
+        p1 = match[0].strip()
+        p2 = match[1].strip()
+        p1_clean = "" if p1.lower() in ("unknown", "desconocido") else p1
+        p2_clean = "" if p2.lower() in ("unknown", "desconocido") else p2
+        return p1_clean, p2_clean
+
+    m_tight = re.match(r"^([A-Za-z0-9_-]+)\s*[×xX+]\s*([A-Za-z0-9_-]+)$", s)
+    if m_tight:
+        p1 = m_tight.group(1).strip()
+        p2 = m_tight.group(2).strip()
+        p1_clean = "" if p1.lower() in ("unknown", "desconocido") else p1
+        p2_clean = "" if p2.lower() in ("unknown", "desconocido") else p2
+        return p1_clean, p2_clean
+
+    return s, ""
+
+
+def combine_parents(parent1: Optional[str], parent2: Optional[str], fallback: Optional[str] = None) -> str:
+    """
+    Combines two parent keys into botanical cross notation: 'Parent1 × Parent2'.
+    If a parent is not selected or empty, the default value is 'unknown'.
+    - If neither is provided -> 'unknown'
+    - If Parent 1 is provided and Parent 2 is empty -> 'Parent1 × unknown'
+    - If Parent 1 is empty and Parent 2 is provided -> 'unknown × Parent2'
+    - If both are provided -> 'Parent1 × Parent2'
+    """
+    p1 = (parent1 or "").strip()
+    p2 = (parent2 or "").strip()
+
+    is_p1_unknown = (not p1) or (p1.lower() in ("unknown", "desconocido", "--", "none", "null"))
+    is_p2_unknown = (not p2) or (p2.lower() in ("unknown", "desconocido", "--", "none", "null"))
+
+    if is_p1_unknown and is_p2_unknown:
+        if fallback and fallback.strip() and fallback.strip().lower() not in ("unknown", "desconocido"):
+            return fallback.strip()
+        return "unknown"
+
+    val1 = "unknown" if is_p1_unknown else p1
+    val2 = "unknown" if is_p2_unknown else p2
+
+    return f"{val1} × {val2}"
+
+
 def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     """Converts a SQLite row into a dict, deserializing photos and normalizing values."""
     d = dict(row)
@@ -229,10 +442,78 @@ def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 
+def check_database_integrity() -> Tuple[bool, str]:
+    """
+    Executes SQLite PRAGMA integrity_check to verify database file health and structure.
+    Returns (True, 'OK') if healthy, or (False, error_details) if any corruption is found.
+    """
+    try:
+        with _open_raw_connection() as conn:
+            rows = conn.execute("PRAGMA integrity_check;").fetchall()
+            messages = [r[0] for r in rows if r]
+            if len(messages) == 1 and str(messages[0]).strip().lower() == "ok":
+                return True, "OK"
+            return False, "; ".join(str(m) for m in messages)
+    except Exception as e:
+        return False, str(e)
+
+
+def _seed_default_data_conn(conn: sqlite3.Connection, insert_missing: bool = True) -> int:
+    """
+    Seeds default botanical records directly from DB/seeds.json into SQLite.
+    DB/seeds.json is the sole source of truth for default specimens.
+    """
+    if not os.path.exists(SEEDS_FILE):
+        print(f"[DATABASE] Seeds file {SEEDS_FILE} not found. No default seeds loaded.")
+        return 0
+
+    try:
+        with open(SEEDS_FILE, "r", encoding="utf-8") as f:
+            seeds = json.load(f)
+    except Exception as e:
+        print(f"[DATABASE] Error reading {SEEDS_FILE}: {e}")
+        return 0
+
+    if not seeds or not isinstance(seeds, list) or len(seeds) == 0:
+        print(f"[DATABASE] Seeds file {SEEDS_FILE} is empty or invalid JSON array.")
+        return 0
+
+    inserted_count = 0
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for p in seeds:
+        cursor = conn.execute("""
+            INSERT OR IGNORE INTO plants (
+                name, species, aka, location, height, registration_date, padres,
+                sowing_cutting_date, graft, last_pruned, last_repotted,
+                fertilizante, photos, status, comentarios, indxw, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            p["name"], p["species"], p.get("aka", ""), p.get("location", ""), p.get("height", ""),
+            p.get("registration_date", ""), p.get("padres", ""), p.get("sowing_cutting_date", ""),
+            p.get("graft", ""), p.get("last_pruned", ""), p.get("last_repotted", ""),
+            p.get("fertilizante", ""), json.dumps(p.get("photos", [])),
+            normalize_status(p.get("status")), p.get("comentarios", ""), int(p.get("indxw", 0)), now, now
+        ))
+        if cursor.rowcount > 0:
+            inserted_count += 1
+    conn.commit()
+
+    if inserted_count > 0:
+        print(f"[DATABASE] Loaded {inserted_count} default botanical specimens from DB/seeds.json into SQLite.")
+
+    try:
+        import img_conv
+        img_conv.generate_seed_photos_if_missing()
+    except Exception:
+        pass
+
+    return inserted_count
+
+
 def init_db() -> None:
-    """Initializes database schema, indexes, and seeds default records."""
+    """Initializes database schema, indexes, verifies integrity, and seeds default records."""
     os.makedirs(DB_DIR, exist_ok=True)
-    with get_connection() as conn:
+    with _open_raw_connection() as conn:
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS plants (
@@ -265,37 +546,26 @@ def init_db() -> None:
             conn.execute(f"CREATE INDEX IF NOT EXISTS idx_plants_{col} ON plants({col});")
         conn.commit()
 
-    seed_default_data()
+        _seed_default_data_conn(conn, insert_missing=True)
+
+    ok, msg = check_database_integrity()
+    if ok:
+        print("[DATABASE] SQLite integrity verified: OK")
+    else:
+        print(f"[DATABASE] SQLite integrity check WARNING: {msg}")
 
 
-def seed_default_data() -> None:
-    """Seeds default curated botanical records from DB/seeds.json if empty."""
-    with get_connection() as conn:
-        if conn.execute("SELECT 1 FROM plants LIMIT 1").fetchone():
-            return
-        if not os.path.exists(SEEDS_FILE):
-            return
-        try:
-            with open(SEEDS_FILE, "r", encoding="utf-8") as f:
-                seeds = json.load(f)
-            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            for p in seeds:
-                conn.execute("""
-                    INSERT OR IGNORE INTO plants (
-                        name, species, aka, location, height, registration_date, padres,
-                        sowing_cutting_date, graft, last_pruned, last_repotted,
-                        fertilizante, photos, status, comentarios, indxw, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    p["name"], p["species"], p.get("aka", ""), p.get("location", ""), p.get("height", ""),
-                    p.get("registration_date", ""), p.get("padres", ""), p.get("sowing_cutting_date", ""),
-                    p.get("graft", ""), p.get("last_pruned", ""), p.get("last_repotted", ""),
-                    p.get("fertilizante", ""), json.dumps(p.get("photos", [])),
-                    p.get("status", "OK"), p.get("comentarios", ""), int(p.get("indxw", 0)), now, now
-                ))
-            conn.commit()
-        except Exception:
-            pass
+def seed_default_data(insert_missing: bool = True) -> int:
+    """
+    Seeds default curated botanical records into SQLite.
+    Guarantees default specimen loading when no database is present or when new seeds are added.
+    Uses INSERT OR IGNORE so existing customized plants are never overwritten.
+    Returns the count of inserted plants.
+    """
+    with _open_raw_connection() as conn:
+        return _seed_default_data_conn(conn, insert_missing=insert_missing)
+
+
 
 
 def get_plants(
@@ -306,42 +576,51 @@ def get_plants(
     sort_by: str = "name"
 ) -> List[Dict[str, Any]]:
     """Fetches plants with optional search, status, age, and height filtering."""
-    with get_connection() as conn:
-        query = "SELECT * FROM plants WHERE 1=1"
-        params: List[Any] = []
+    result: List[Dict[str, Any]] = []
+    for attempt in range(2):
+        try:
+            with get_connection() as conn:
+                query = "SELECT * FROM plants WHERE 1=1"
+                params: List[Any] = []
 
-        if status_filter:
-            s_clean = status_filter.strip().lower()
-            if s_clean not in ("all", "", "*"):
-                query += " AND status = ?"
-                params.append(normalize_status(s_clean))
+                if status_filter:
+                    s_clean = status_filter.strip().lower()
+                    if s_clean not in ("all", "", "*"):
+                        query += " AND status = ?"
+                        params.append(normalize_status(s_clean))
 
-        if search_query and search_query.strip():
-            sq = f"%{search_query.strip()}%"
-            query += " AND (name LIKE ? OR aka LIKE ? OR species LIKE ? OR location LIKE ? OR height LIKE ? OR padres LIKE ? OR graft LIKE ? OR comentarios LIKE ?)"
-            params.extend([sq] * 8)
+                if search_query and search_query.strip():
+                    sq = f"%{search_query.strip()}%"
+                    query += " AND (name LIKE ? OR aka LIKE ? OR species LIKE ? OR location LIKE ? OR height LIKE ? OR padres LIKE ? OR graft LIKE ? OR comentarios LIKE ?)"
+                    params.extend([sq] * 8)
 
-        sort_map = {
-            "name": "ORDER BY LENGTH(name) ASC, name ASC",
-            "species": "ORDER BY species COLLATE NOCASE ASC",
-            "status": "ORDER BY status ASC",
-            "date": "ORDER BY registration_date DESC"
-        }
-        query += f" {sort_map.get(sort_by, sort_map['name'])}"
+                sort_map = {
+                    "name": "ORDER BY LENGTH(name) ASC, name ASC",
+                    "species": "ORDER BY species COLLATE NOCASE ASC",
+                    "status": "ORDER BY status ASC",
+                    "date": "ORDER BY registration_date DESC"
+                }
+                query += f" {sort_map.get(sort_by, sort_map['name'])}"
 
-        rows = conn.execute(query, params).fetchall()
-        result = [row_to_dict(r) for r in rows]
+                rows = conn.execute(query, params).fetchall()
+                result = [row_to_dict(r) for r in rows]
+                break
+        except sqlite3.OperationalError as e:
+            if "no such table" in str(e).lower() and attempt == 0:
+                init_db()
+                continue
+            raise
 
-        if age_filter and age_filter.strip().lower() not in ("all", "", "*"):
-            result = [
-                p for p in result
-                if matches_age_filter(get_plant_age_months(p.get("sowing_cutting_date"), p.get("graft", "")), age_filter)
-            ]
+    if age_filter and age_filter.strip().lower() not in ("all", "", "*"):
+        result = [
+            p for p in result
+            if matches_age_filter(get_plant_age_months(p.get("sowing_cutting_date"), p.get("graft", "")), age_filter)
+        ]
 
-        if height_filter and height_filter.strip().lower() not in ("all", "", "*", "todas", "todos"):
-            result = [p for p in result if matches_height_filter(p.get("height"), height_filter)]
+    if height_filter and height_filter.strip().lower() not in ("all", "", "*", "todas", "todos"):
+        result = [p for p in result if matches_height_filter(p.get("height"), height_filter)]
 
-        return result
+    return result
 
 
 def get_plant(name: str) -> Optional[Dict[str, Any]]:
@@ -371,6 +650,15 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     indxw_raw = data.get("indxw", 0)
     indxw_val = 1 if indxw_raw in (1, "1", True, "true", "True", "on") else 0
 
+    raw_height = (data.get("height") or "").strip()
+    height_val = format_height_entry(raw_height, force_date=True)
+
+    raw_pruned = (data.get("last_pruned") or "").strip()
+    pruned_val = format_care_entry(raw_pruned, force_date=True) if raw_pruned else ""
+
+    raw_repotted = (data.get("last_repotted") or "").strip()
+    repotted_val = format_care_entry(raw_repotted, force_date=True) if raw_repotted else ""
+
     with get_connection() as conn:
         if conn.execute("SELECT 1 FROM plants WHERE name = ?", (key,)).fetchone():
             return False, f"La clave '{key}' ya existe en la base de datos."
@@ -383,9 +671,9 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             key, species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
-            (data.get("height") or "").strip(), reg_date, (data.get("padres") or "").strip(),
+            height_val, reg_date, (data.get("padres") or "").strip(),
             (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
-            (data.get("last_pruned") or "").strip(), (data.get("last_repotted") or "").strip(),
+            pruned_val, repotted_val,
             (data.get("fertilizante") or "").strip(), photos_json,
             normalize_status(data.get("status")), (data.get("comentarios") or "").strip(), indxw_val, now, now
         ))
@@ -407,11 +695,24 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     with get_connection() as conn:
-        existing = conn.execute("SELECT registration_date, indxw FROM plants WHERE name = ?", (key,)).fetchone()
+        existing = conn.execute("SELECT registration_date, indxw, height, last_pruned, last_repotted FROM plants WHERE name = ?", (key,)).fetchone()
         if not existing:
             return False, f"Planta '{key}' no encontrada."
 
         reg_date = (data.get("registration_date") or "").strip() or (existing["registration_date"] or "")
+
+        old_height = existing["height"] if "height" in existing.keys() else ""
+        old_pruned = existing["last_pruned"] if "last_pruned" in existing.keys() else ""
+        old_repotted = existing["last_repotted"] if "last_repotted" in existing.keys() else ""
+
+        raw_height = (data.get("height") or "").strip()
+        height_val = format_height_entry(raw_height, old_val=old_height)
+
+        raw_pruned = (data.get("last_pruned") or "").strip()
+        pruned_val = format_care_entry(raw_pruned, old_val=old_pruned) if raw_pruned else ""
+
+        raw_repotted = (data.get("last_repotted") or "").strip()
+        repotted_val = format_care_entry(raw_repotted, old_val=old_repotted) if raw_repotted else ""
 
         if "indxw" in data:
             indxw_val = 1 if data["indxw"] in (1, "1", True, "true", "True", "on") else 0
@@ -426,9 +727,9 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
             WHERE name = ?
         """, (
             species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
-            (data.get("height") or "").strip(), reg_date, (data.get("padres") or "").strip(),
+            height_val, reg_date, (data.get("padres") or "").strip(),
             (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
-            (data.get("last_pruned") or "").strip(), (data.get("last_repotted") or "").strip(),
+            pruned_val, repotted_val,
             (data.get("fertilizante") or "").strip(), normalize_status(data.get("status")),
             (data.get("comentarios") or "").strip(), indxw_val, now, key
         ))
@@ -446,6 +747,7 @@ def delete_plant(name: str) -> Tuple[bool, List[str]]:
     with get_connection() as conn:
         conn.execute("DELETE FROM plants WHERE name = ?", (key,))
         conn.commit()
+
     return True, plant.get("photos", [])
 
 
@@ -485,6 +787,7 @@ def _update_plant_photos(name: str, modifier_fn) -> bool:
             (json.dumps(photos), datetime.now().strftime("%Y-%m-%d %H:%M:%S"), plant["name"])
         )
         conn.commit()
+
     return True
 
 
@@ -503,6 +806,18 @@ def get_all_keys() -> List[str]:
     with get_connection() as conn:
         cursor = conn.execute("SELECT name FROM plants ORDER BY LENGTH(name) ASC, name ASC")
         return [r["name"] for r in cursor.fetchall()]
+
+
+def is_grafted(val: Optional[str]) -> bool:
+    """Returns True if the plant has a genuine rootstock graft, False if on own roots or ungrafted."""
+    if not val or not isinstance(val, str):
+        return False
+    v = val.strip().lower()
+    if not v or v in ("no", "ninguno", "none", "—", "-"):
+        return False
+    if "sin injerto" in v or "pie propio" in v or "raíz propia" in v or "raiz propia" in v or "propio" in v:
+        return False
+    return True
 
 
 def get_inventory_stats() -> Dict[str, Any]:
@@ -541,8 +856,7 @@ def get_inventory_stats() -> Dict[str, Any]:
         else:
             stats["without_photos"] += 1
 
-        graft_val = (r["graft"] or "").strip().lower()
-        if graft_val and "sin injerto" not in graft_val and graft_val not in ("no", "ninguno"):
+        if is_grafted(r["graft"]):
             stats["with_graft"] += 1
         else:
             stats["own_roots"] += 1
@@ -565,11 +879,11 @@ def get_stats() -> Dict[str, Any]:
     }
 
 
-def backup_db(custom_target_path: Optional[str] = None) -> str:
+def backup_db(custom_target_path: Optional[str] = None, max_retention: int = 20) -> str:
     """
     Safely creates a consistent snapshot of the SQLite database using the native
-    online backup API (non-blocking, zero lock contention).
-    Retains the most recent 14 snapshots (~7 days at 2 backups/day).
+    online backup API (non-blocking, zero lock contention, crash-proof).
+    Retains the most recent snapshots (default: 20) to prevent disk exhaustion.
     """
     os.makedirs(BACKUPS_DIR, exist_ok=True)
     if custom_target_path:
@@ -584,15 +898,15 @@ def backup_db(custom_target_path: Optional[str] = None) -> str:
             src_conn.backup(dest_conn)
         dest_conn.close()
 
-    # Prune old automated backups (keep last 14)
+    # Prune old automated backups to keep exactly the latest `max_retention` snapshots
     try:
         backups = sorted([
             os.path.join(BACKUPS_DIR, f)
             for f in os.listdir(BACKUPS_DIR)
             if f.startswith("plantation_backup_") and f.endswith(".db")
         ])
-        if len(backups) > 14:
-            for old_bk in backups[:-14]:
+        if len(backups) > max_retention:
+            for old_bk in backups[:-max_retention]:
                 try:
                     os.remove(old_bk)
                 except OSError:
@@ -601,6 +915,42 @@ def backup_db(custom_target_path: Optional[str] = None) -> str:
         pass
 
     return target_file
+
+
+def get_database_health() -> Dict[str, Any]:
+    """Returns database health metrics, integrity status, and backup snapshot details."""
+    integrity_ok, integrity_msg = check_database_integrity()
+    db_size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 0
+
+    backups = []
+    if os.path.exists(BACKUPS_DIR):
+        for f in os.listdir(BACKUPS_DIR):
+            if f.startswith("plantation_backup_") and f.endswith(".db"):
+                fp = os.path.join(BACKUPS_DIR, f)
+                try:
+                    mtime = os.path.getmtime(fp)
+                    size = os.path.getsize(fp)
+                    backups.append({"filename": f, "path": fp, "mtime": mtime, "size": size})
+                except OSError:
+                    pass
+    backups.sort(key=lambda x: x["mtime"], reverse=True)
+
+    latest_time_str = "Ninguno"
+    if backups:
+        latest_time_str = datetime.fromtimestamp(backups[0]["mtime"]).strftime("%Y-%m-%d %H:%M:%S")
+
+    size_formatted = f"{db_size / 1024:.1f} KB" if db_size < 1024 * 1024 else f"{db_size / (1024 * 1024):.2f} MB"
+
+    return {
+        "integrity_ok": integrity_ok,
+        "integrity_message": integrity_msg,
+        "total_backups": len(backups),
+        "latest_backup_time": latest_time_str,
+        "latest_backup_filename": backups[0]["filename"] if backups else None,
+        "database_size_bytes": db_size,
+        "database_size_formatted": size_formatted,
+        "backups_list": backups[:10],
+    }
 
 
 _scheduler_started = False
@@ -620,7 +970,6 @@ def start_backup_scheduler(interval_seconds: int = 43200) -> None:
     import time
 
     def _backup_loop():
-        # Brief pause on boot before taking the first initial snapshot
         time.sleep(10)
         while True:
             try:
@@ -632,5 +981,6 @@ def start_backup_scheduler(interval_seconds: int = 43200) -> None:
 
     thread = threading.Thread(target=_backup_loop, daemon=True, name="sqlite-backup-scheduler")
     thread.start()
+
 
 

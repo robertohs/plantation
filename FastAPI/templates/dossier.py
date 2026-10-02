@@ -16,6 +16,19 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
     photos = plant.get("photos", [])
     _, age_detailed = db.calculate_plant_age(plant.get("sowing_cutting_date"), plant.get("graft", ""))
 
+    padres_raw = (plant.get("padres") or "").strip()
+    p1, p2 = db.split_parents(padres_raw)
+    if p1 and p2:
+        padres_display = f"{p1} × {p2}"
+    elif p1:
+        padres_display = f"{p1} × unknown"
+    elif p2:
+        padres_display = f"unknown × {p2}"
+    elif padres_raw and padres_raw.lower() not in ("unknown", "desconocido"):
+        padres_display = padres_raw
+    else:
+        padres_display = "unknown"
+
     photos_html = ""
     if photos:
         items = []
@@ -236,7 +249,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
                 </tr>
                 <tr>
                     <th>LINAJE (PADRES)</th>
-                    <td>{plant.get('padres') or 'Desconocido'}</td>
+                    <td>{padres_display}</td>
                 </tr>
                 <tr>
                     <th>INJERTO</th>

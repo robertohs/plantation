@@ -3,9 +3,56 @@ Plantation - Admin & Inventory Module Template
 Handles the collapsible inventory tray, batch operations, and data exports.
 """
 
-from typing import List
+from typing import List, Optional
 import db
 from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH
+
+
+def render_db_health_card(integrity_result_msg: Optional[str] = None) -> str:
+    """Renders real-time database reliability, auto-backup metrics, and integrity check interface."""
+    health = db.get_database_health()
+    ok = health["integrity_ok"]
+    status_color = "var(--green-sage)" if ok else "var(--red-crimson)"
+    status_text = "INTEGRIDAD OK (0 anomalías)" if ok else f"ALERTA: {health['integrity_message']}"
+    if integrity_result_msg:
+        status_text = integrity_result_msg
+
+    return f"""
+    <div id="db-health-card" class="inventory-stat-card" style="margin-top: 12px; margin-bottom: 12px; padding: 12px 16px; border: 1px solid var(--border-color); background: rgba(0,0,0,0.18); border-radius: 4px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-weight: 700; font-size: 11px; letter-spacing: 0.5px; color: var(--text-main);">ESTADO BASE DE DATOS & RESPALDOS AUTOMÁTICOS:</span>
+                <span style="color: {status_color}; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
+                    ● {status_text}
+                </span>
+            </div>
+            <div style="font-size: 11px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 16px;">
+                <span>Tamaño DB: <strong style="color: var(--text-sub);">{health['database_size_formatted']}</strong></span>
+                <span>Copias en disco: <strong style="color: var(--blue-sky);">{health['total_backups']}</strong> (Programado cada 12h, max 20)</span>
+                <span>Último respaldo: <strong style="color: var(--peach-orange);">{health['latest_backup_time']}</strong></span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button"
+                    class="btn btn-sm"
+                    hx-get="/admin/check-integrity"
+                    hx-target="#db-health-card"
+                    hx-swap="outerHTML"
+                    title="Ejecutar PRAGMA integrity_check en SQLite">
+                🔍 [VERIFICAR INTEGRIDAD]
+            </button>
+            <button type="button"
+                    class="btn btn-sm btn-green"
+                    hx-post="/admin/create-backup"
+                    hx-target="#db-health-card"
+                    hx-swap="outerHTML"
+                    title="Crear un respaldo hot backup inmediato en DB/backups/">
+                ⚡ [CREAR RESPALDO AHORA]
+            </button>
+        </div>
+    </div>
+    """
+
 
 
 def render_admin_panel_content(filter_tag: str = "ALL") -> str:
@@ -18,7 +65,7 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
     if filter_tag == "NO_PHOTOS":
         plants_to_show = [p for p in all_plants if not p.get("photos")]
     elif filter_tag == "GRAFTED":
-        plants_to_show = [p for p in all_plants if p.get("graft") and "sin injerto" not in (p.get("graft") or "").lower()]
+        plants_to_show = [p for p in all_plants if db.is_grafted(p.get("graft"))]
     elif filter_tag == "ILL":
         plants_to_show = [p for p in all_plants if p.get("status") == "notOK"]
     else:
@@ -126,6 +173,8 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
         <div class="inventory-stats-grid">
             {stats_grid_html}
         </div>
+
+        {render_db_health_card()}
 
         <div class="inventory-toolbar">
             <div class="inventory-filter-tabs">

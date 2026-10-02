@@ -166,10 +166,22 @@ def generate_seed_photos_if_missing() -> None:
     seed_specs = [
         ("A1_1.webp", "A1", "Ariocarpus kotschoubeyanus", "#24273a", "#a6da95", "ROSE MAGENTA FLOWER"),
         ("A1_2.webp", "A1", "Ariocarpus kotschoubeyanus", "#1e1e2e", "#8aadf4", "TUBERCLE DETAIL"),
+        ("A1_3.webp", "A1", "Ariocarpus kotschoubeyanus", "#24273a", "#f5bde6", "APICAL WOOLLY CROWN"),
         ("900_1.webp", "900", "Lophophora caespitosa", "#24273a", "#8aadf4", "14 APICAL CLUSTERS"),
         ("A2_1.webp", "A2", "Ariocarpus retusus x trigonus", "#24273a", "#a6da95", "GRAFTED SPECIMEN"),
+        ("A33_1.webp", "A33", "Ariocarpus fissuratus", "#24273a", "#c6a0f6", "LIVING ROCK FOSSIL"),
         ("B12_1.webp", "B12", "Astrophytum 'Super Kabuto'", "#362629", "#eed49f", "ISOLATION QUARANTINE"),
         ("K7_1.webp", "K7", "Pachypodium namaquanum", "#24273a", "#8bd5ca", "ARID SUCCULENT STEM"),
+        ("A22_1.webp", "A22", "Ariocarpus bravoanus hintonii", "#24273a", "#a6da95", "FLAT DISCOID TUBERCLES"),
+        ("K-12_1.webp", "K-12", "Pachypodium brevicaule", "#1e1e2e", "#eed49f", "MADAGASCAR SILVER CUSHION"),
+        ("C05_1.webp", "C05", "Copiapoa columna-alba", "#1e2030", "#eed49f", "WHITE-WAX PRUINOSE STEM"),
+        ("E01_1.webp", "E01", "Euphorbia obesa", "#24273a", "#a6da95", "BASEBALL GEOMETRIC RIBS"),
+        ("O08_1.webp", "O08", "Obregonia denegrii", "#1e1e2e", "#8aadf4", "ARTICHOKE SPIRAL TUBERCLES"),
+        ("T14_1.webp", "T14", "Turbinicarpus valdezianus", "#24273a", "#c6a0f6", "FEATHERED SPINE COATING"),
+        ("L02_1.webp", "L02", "Lophophora williamsii texana", "#362629", "#ed8796", "QUARANTINE OBSERVATION"),
+        ("F09_1.webp", "F09", "Ferocactus pilosus", "#2a1e24", "#ee99a0", "RUBY RED SPINE CLUSTER"),
+        ("M03_1.webp", "M03", "Mammillaria luethyi", "#1e1e2e", "#f5bde6", "MICROSCOPIC RADIAL ROSETTES"),
+        ("S10_1.webp", "S10", "Strombocactus disciformis", "#24273a", "#8bd5ca", "DISCIFORM LIMESTONE SPECIMEN"),
     ]
 
     for filename, key, species, bg_color, accent_color, subtitle in seed_specs:

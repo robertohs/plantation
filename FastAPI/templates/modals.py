@@ -31,14 +31,15 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
 
     height_val = p.get("height", "")
     if not is_edit and not height_val:
-        height_val = f"{now_str} - 0 cm"
+        height_val = f"0 cm ({now_str})"
 
     sow_val = _sanitize_date(p.get("sowing_cutting_date"))
     if not is_edit and not sow_val:
         sow_val = now_str
 
     graft_val = p.get("graft", "")
-    padres_val = p.get("padres", "")
+    padres_val = (p.get("padres") or "").strip()
+    padre1_val, padre2_val = db.split_parents(padres_val)
     pruned_val = p.get("last_pruned", "")
     repotted_val = p.get("last_repotted", "")
     fert_val = p.get("fertilizante", "")
@@ -46,7 +47,28 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     indxw_val = int(p.get("indxw", 0))
 
     existing_keys = db.get_all_keys()
-    keys_datalist = "".join([f'<option value="{k}">' for k in existing_keys if k != name_val])
+    plants_list = db.get_plants()
+    available_parents = [item for item in plants_list if item.get("name") != name_val]
+    datalist_items = []
+    for p in available_parents:
+        p_name = p.get("name", "")
+        p_spec = p.get("species", "")
+        p_aka = f" ({p.get('aka')})" if p.get("aka") else ""
+        datalist_items.append(f'<option value="{p_name}">{p_name} — {p_spec}{p_aka}</option>')
+    keys_datalist = "".join(datalist_items)
+
+    def _initial_parent_feedback(k_val: str) -> str:
+        clean = (k_val or "").strip()
+        if not clean or clean.lower() in ("unknown", "desconocido"):
+            return '<span style="color: var(--text-dim); font-size: 11px;">✓ Sin parental seleccionado (default: "unknown")</span>'
+        pl = db.get_plant(clean)
+        if pl:
+            aka = f' ("{pl.get("aka")}")' if pl.get("aka") else ""
+            return f'<span style="color: var(--green-sage); font-weight: 600; font-size: 11px;">✓ Clave existente: {clean} — {pl.get("species", "")}{aka}</span>'
+        return f'<span style="color: var(--red-crimson); font-weight: 700; font-size: 11px;">✕ La clave \'{clean}\' no existe en la base de datos.</span>'
+
+    padre1_feedback = _initial_parent_feedback(padre1_val)
+    padre2_feedback = _initial_parent_feedback(padre2_val)
 
     key_input = f"""
         <input type="text"
@@ -134,14 +156,21 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-height">ALTURA (FECHA - ALTURA CM)</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="inp-height" style="margin-bottom: 0;">ALTURA (CM)</label>
+                    <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">(Fecha actual añadida automáticamente)</span>
+                </div>
                 <input type="text"
                        id="inp-height"
                        name="height"
                        class="form-input"
                        value="{height_val}"
-                       placeholder="Ej: 2026-03-10 - 14.5 cm"
-                       autocomplete="off" />
+                       placeholder="Ej: 40 cm (o escribe 40)"
+                       autocomplete="off"
+                       onblur="autoFormatHeightInput(this)" />
+                <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">
+                    Si introduces <strong style="color: var(--teal-accent);">40</strong> se guardará automáticamente como <strong style="color: var(--green-sage);">40 cm ({now_str})</strong>
+                </div>
             </div>
 
             <div class="form-group">
@@ -164,35 +193,140 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                        placeholder="Ej: Sin injerto / Myrtillocactus" />
             </div>
 
-            <div class="form-group">
-                <label class="form-label" for="inp-padres">LINAJE / CRUCE (PADRES)</label>
-                <input type="text"
-                       id="inp-padres"
-                       name="padres"
-                       class="form-input"
-                       value="{padres_val}"
-                       list="existing-plant-keys"
-                       placeholder="Ej: A1 + 900, Clon silvestre..." />
+            <div class="form-group full" style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+                    <label class="form-label" style="color: var(--teal-accent); margin-bottom: 0; display: flex; align-items: center; gap: 6px;">
+                        <span>🧬 LINAJE / CRUCE (CLAVES DE PARENTALES)</span>
+                    </label>
+                    <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">
+                        2 claves de la colección • Si no se selecciona, valor por defecto: "unknown"
+                    </span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <!-- Progenitor 1 Key -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="form-label" for="inp-padre1" style="font-size: 10px; color: var(--peach-orange); margin-bottom: 0;">
+                                CLAVE PROGENITOR 1 (MADRE / SEMILLA)
+                            </label>
+                            <button type="button"
+                                    class="btn-today"
+                                    onclick="clearSingleParent(1);"
+                                    title="Restablecer a unknown"
+                                    style="padding: 1px 6px; font-size: 9px; color: var(--text-dim);">
+                                [unknown]
+                            </button>
+                        </div>
+                        <input type="text"
+                               id="inp-padre1"
+                               name="padre1"
+                               class="form-input"
+                               value="{padre1_val}"
+                               list="existing-plant-keys"
+                               placeholder="Ej: A1, 900 (o vacío para unknown)"
+                               maxlength="20"
+                               autocomplete="off"
+                               hx-get="/plants/validate-parent-key?num=1&plant={name_val}"
+                               hx-trigger="input changed delay:200ms, blur, change"
+                               hx-target="#padre1-validation-feedback"
+                               hx-swap="innerHTML"
+                               oninput="updateCombinedPadres();" />
+                        <div id="padre1-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;">
+                            {padre1_feedback}
+                        </div>
+                    </div>
+
+                    <!-- Progenitor 2 Key -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="form-label" for="inp-padre2" style="font-size: 10px; color: var(--blue-sky); margin-bottom: 0;">
+                                CLAVE PROGENITOR 2 (PADRE / POLEN)
+                            </label>
+                            <button type="button"
+                                    class="btn-today"
+                                    onclick="clearSingleParent(2);"
+                                    title="Restablecer a unknown"
+                                    style="padding: 1px 6px; font-size: 9px; color: var(--text-dim);">
+                                [unknown]
+                            </button>
+                        </div>
+                        <input type="text"
+                               id="inp-padre2"
+                               name="padre2"
+                               class="form-input"
+                               value="{padre2_val}"
+                               list="existing-plant-keys"
+                               placeholder="Ej: 900, K-12 (o vacío para unknown)"
+                               maxlength="20"
+                               autocomplete="off"
+                               hx-get="/plants/validate-parent-key?num=2&plant={name_val}"
+                               hx-trigger="input changed delay:200ms, blur, change"
+                               hx-target="#padre2-validation-feedback"
+                               hx-swap="innerHTML"
+                               oninput="updateCombinedPadres();" />
+                        <div id="padre2-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;">
+                            {padre2_feedback}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden combined input for direct form submission -->
+                <input type="hidden" id="inp-padres" name="padres" value="{padres_val or 'unknown'}" />
+
+                <div id="padres-preview-box" style="margin-top: 8px; font-size: 11px; font-family: var(--font-mono); color: var(--text-sub); display: flex; align-items: center; justify-content: space-between; border-top: 1px dashed var(--border-dim); padding-top: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <span style="color: var(--text-dim);">FÓRMULA GENÉTICA:</span>
+                        <span id="padres-preview-text" style="color: var(--text-main); font-weight: 700;">{padres_val or 'unknown'}</span>
+                    </div>
+                    <button type="button"
+                            class="btn btn-sm"
+                            onclick="clearParentsInputs()"
+                            style="padding: 1px 8px; font-size: 9.5px; color: var(--text-dim);"
+                            title="Restablecer ambos parentales a unknown">
+                        ✕ Restablecer a "unknown"
+                    </button>
+                </div>
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-last_pruned">ÚLTIMA PODA / LIMPIEZA</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="inp-last_pruned" style="margin-bottom: 0;">ÚLTIMA PODA / LIMPIEZA</label>
+                    <button type="button"
+                            class="btn-today"
+                            onclick="setCareFieldToday('inp-last_pruned')"
+                            title="Rellenar con la fecha actual ({now_str})">
+                        [Hoy]
+                    </button>
+                </div>
                 <input type="text"
                        id="inp-last_pruned"
                        name="last_pruned"
                        class="form-input"
                        value="{pruned_val}"
-                       placeholder="Ej: 2025-10-15 (Poda de raíces)" />
+                       placeholder="Ej: {now_str} (Poda de raíces)"
+                       onblur="autoEnsureCareDate(this)"
+                       autocomplete="off" />
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-last_repotted">ÚLTIMO TRASPLANTE / SUSTRATO</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="inp-last_repotted" style="margin-bottom: 0;">ÚLTIMO TRASPLANTE / SUSTRATO</label>
+                    <button type="button"
+                            class="btn-today"
+                            onclick="setCareFieldToday('inp-last_repotted')"
+                            title="Rellenar con la fecha actual ({now_str})">
+                        [Hoy]
+                    </button>
+                </div>
                 <input type="text"
                        id="inp-last_repotted"
                        name="last_repotted"
                        class="form-input"
                        value="{repotted_val}"
-                       placeholder="Ej: 2025-02-18 (Pómice 80%)" />
+                       placeholder="Ej: {now_str} (Pómice 80%)"
+                       onblur="autoEnsureCareDate(this)"
+                       autocomplete="off" />
             </div>
 
             <div class="form-group full">
@@ -213,6 +347,56 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                           placeholder="Anota periodos de reposo invernal, floración, evolución de costillas, esquejes obtenidos...">{comm_val}</textarea>
             </div>
         </div>
+
+        <script>
+            function updateCombinedPadres() {{
+                var p1 = document.getElementById('inp-padre1');
+                var p2 = document.getElementById('inp-padre2');
+                var target = document.getElementById('inp-padres');
+                var preview = document.getElementById('padres-preview-text');
+                if (!p1 || !p2 || !target || !preview) return;
+
+                var v1 = (p1.value || '').trim();
+                var v2 = (p2.value || '').trim();
+
+                var isUnk1 = (!v1) || (v1.toLowerCase() === 'unknown') || (v1.toLowerCase() === 'desconocido');
+                var isUnk2 = (!v2) || (v2.toLowerCase() === 'unknown') || (v2.toLowerCase() === 'desconocido');
+
+                var combined = '';
+                if (isUnk1 && isUnk2) {{
+                    combined = 'unknown';
+                }} else {{
+                    var part1 = isUnk1 ? 'unknown' : v1;
+                    var part2 = isUnk2 ? 'unknown' : v2;
+                    combined = part1 + ' × ' + part2;
+                }}
+
+                target.value = combined;
+                preview.textContent = combined;
+            }}
+
+            function clearSingleParent(num) {{
+                var inp = document.getElementById('inp-padre' + num);
+                var feedback = document.getElementById('padre' + num + '-validation-feedback');
+                if (inp) {{
+                    inp.value = '';
+                    inp.style.borderColor = 'var(--border-dim)';
+                }}
+                if (feedback) {{
+                    feedback.innerHTML = '<span style="color: var(--text-dim); font-size: 11px;">✓ Sin parental seleccionado (default: "unknown")</span>';
+                }}
+                var btn1 = document.getElementById('new-plant-submit-btn');
+                var btn2 = document.getElementById('edit-plant-submit-btn');
+                if (btn1) btn1.disabled = false;
+                if (btn2) btn2.disabled = false;
+                updateCombinedPadres();
+            }}
+
+            function clearParentsInputs() {{
+                clearSingleParent(1);
+                clearSingleParent(2);
+            }}
+        </script>
     """
 
 
@@ -243,12 +427,35 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     aka_val = (plant.get("aka") or "").strip()
     aka_badge = f'<strong style="color: var(--peach-orange); font-weight: 700;">"{aka_val}"</strong>' if aka_val else '<span style="color: var(--text-dim);">—</span>'
 
+    padres_raw = (plant.get("padres") or "").strip()
+    p1, p2 = db.split_parents(padres_raw)
+    all_keys = db.get_all_keys()
+
+    def _parent_link(k: str) -> str:
+        clean_k = (k or "").strip()
+        if not clean_k or clean_k.lower() in ("unknown", "desconocido"):
+            return '<span style="color: var(--text-dim); font-style: italic;">unknown</span>'
+        if clean_k in all_keys:
+            return f'<a href="#" hx-get="/plants/{clean_k}" hx-target="#modal-container" hx-swap="innerHTML" class="plant-key" style="color: #ff66cc; text-decoration: underline; font-weight: 700;" title="Abrir expediente del parental {clean_k}">{clean_k}</a>'
+        return f'<span style="color: var(--text-main); font-weight: 600;">{clean_k}</span>'
+
+    if p1 and p2:
+        padres_display_html = f"{_parent_link(p1)} <span style='color: var(--teal-accent); font-weight: bold;'>×</span> {_parent_link(p2)}"
+    elif p1:
+        padres_display_html = f"{_parent_link(p1)} <span style='color: var(--teal-accent); font-weight: bold;'>×</span> <span style='color: var(--text-dim); font-style: italic;'>unknown</span>"
+    elif p2:
+        padres_display_html = f"<span style='color: var(--text-dim); font-style: italic;'>unknown</span> <span style='color: var(--teal-accent); font-weight: bold;'>×</span> {_parent_link(p2)}"
+    elif padres_raw and padres_raw.lower() not in ("unknown", "desconocido"):
+        padres_display_html = f"<span style='color: var(--text-main);'>{padres_raw}</span>"
+    else:
+        padres_display_html = '<span style="color: var(--text-dim); font-style: italic;">unknown</span>'
+
     info_fields = [
         ("Alias", aka_val or "—", False),
         ("Altura (Fecha - CM)", plant.get("height") or "—", False),
         ("Edad", age_detailed, False),
         ("Fecha Siembra / Esquejado", plant.get("sowing_cutting_date") or "—", False),
-        ("Linaje (Padres)", plant.get("padres") or "Desconocido", False),
+        ("Linaje (Padres)", padres_display_html, False),
         ("Injerto", plant.get("graft") or "Sin injerto (Raíz propia)", False),
         ("Última Poda", plant.get("last_pruned") or "—", False),
         ("Último Trasplante", plant.get("last_repotted") or "—", False),
@@ -259,7 +466,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     fields_html = "\n".join(
         f"""<div class="form-group{' full' if is_full else ''}">
             <span class="form-label">{lbl}</span>
-            <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);{' min-height: 50px; white-space: pre-wrap;' if is_full else ' font-weight: 600;' if lbl in ('Alias', 'Altura (Fecha - CM)', 'Edad') else ''}">{val}</div>
+            <div class="form-input" style="background: var(--bg-mantle); color: var(--info-field-color);{' min-height: 50px; white-space: pre-wrap;' if is_full else ' font-weight: 600;' if lbl in ('Alias', 'Altura (Fecha - CM)', 'Edad', 'Linaje (Padres)') else ''}">{val}</div>
         </div>"""
         for lbl, val, is_full in info_fields
     )
@@ -362,7 +569,8 @@ def render_new_plant_modal() -> str:
                   hx-swap="innerHTML"
                   hx-encoding="multipart/form-data"
                   class="modal-form-wrapper"
-                  id="new-plant-form">
+                  id="new-plant-form"
+                  onsubmit="autoFormatHeightInput(document.getElementById('inp-height')); updateCombinedPadres();">
                 <div class="modal-body">
                     <div id="new-plant-error-banner" style="display: none; margin-bottom: 14px;"></div>
                     {render_form_fields(is_edit=False)}
@@ -586,7 +794,8 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
                   hx-swap="innerHTML"
                   hx-encoding="multipart/form-data"
                   class="modal-form-wrapper"
-                  id="edit-plant-form">
+                  id="edit-plant-form"
+                  onsubmit="autoFormatHeightInput(document.getElementById('inp-height')); updateCombinedPadres();">
                 <div class="modal-body">
                     {render_form_fields(plant=plant, is_edit=True)}
 

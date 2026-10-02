@@ -1,6 +1,6 @@
 {
   "name": "Plantation",
-  "description": "Plant logger & botanical dossier application with Japanese Indigo terminal aesthetic, specimen records, and PDF exports.",
+  "description": "Plant logger & botanical dossier",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

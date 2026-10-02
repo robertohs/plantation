@@ -139,6 +139,83 @@ def validate_key_endpoint(name: str = Query("")):
         """)
 
 
+@router.get("/plants/validate-parent-key", response_class=HTMLResponse)
+def validate_parent_key_endpoint(
+    key: str = Query(""),
+    num: int = Query(1),
+    plant: str = Query("")
+):
+    """Validates that a parent key exists in the database and is not the plant itself."""
+    clean_k = (key or "").strip()
+    clean_plant = (plant or "").strip()
+    inp_id = f"inp-padre{num}"
+
+    # If empty or explicit 'unknown': valid default
+    if not clean_k or clean_k.lower() in ("unknown", "desconocido", "--"):
+        return HTMLResponse(f"""
+            <span style="color: var(--text-dim); font-size: 11px;">
+                ✓ Sin parental seleccionado (default: "unknown")
+            </span>
+            <script>
+                var inp = document.getElementById('{inp_id}');
+                if (inp) inp.style.borderColor = 'var(--border-dim)';
+                updateCombinedPadres();
+            </script>
+        """)
+
+    # Cannot be the plant itself
+    if clean_plant and clean_k.lower() == clean_plant.lower():
+        return HTMLResponse(f"""
+            <span style="color: var(--red-crimson); font-weight: 700; font-size: 11px;">
+                ✕ Un ejemplar no puede ser su propio parental.
+            </span>
+            <script>
+                var inp = document.getElementById('{inp_id}');
+                if (inp) inp.style.borderColor = 'var(--red-crimson)';
+                var btn1 = document.getElementById('new-plant-submit-btn');
+                var btn2 = document.getElementById('edit-plant-submit-btn');
+                if (btn1) btn1.disabled = true;
+                if (btn2) btn2.disabled = true;
+                updateCombinedPadres();
+            </script>
+        """)
+
+    # Must exist in DB
+    existing = db.get_plant(clean_k)
+    if existing:
+        aka = f' ("{existing.get("aka")}")' if existing.get("aka") else ""
+        sp = existing.get("species", "")
+        return HTMLResponse(f"""
+            <span style="color: var(--green-sage); font-weight: 600; font-size: 11px;">
+                ✓ Clave existente: {clean_k} — {sp}{aka}
+            </span>
+            <script>
+                var inp = document.getElementById('{inp_id}');
+                if (inp) inp.style.borderColor = 'var(--green-sage)';
+                var btn1 = document.getElementById('new-plant-submit-btn');
+                var btn2 = document.getElementById('edit-plant-submit-btn');
+                if (btn1) btn1.disabled = false;
+                if (btn2) btn2.disabled = false;
+                updateCombinedPadres();
+            </script>
+        """)
+    else:
+        return HTMLResponse(f"""
+            <span style="color: var(--red-crimson); font-weight: 700; font-size: 11px;">
+                ✕ La clave '{clean_k}' no existe en la base de datos.
+            </span>
+            <script>
+                var inp = document.getElementById('{inp_id}');
+                if (inp) inp.style.borderColor = 'var(--red-crimson)';
+                var btn1 = document.getElementById('new-plant-submit-btn');
+                var btn2 = document.getElementById('edit-plant-submit-btn');
+                if (btn1) btn1.disabled = true;
+                if (btn2) btn2.disabled = true;
+                updateCombinedPadres();
+            </script>
+        """)
+
+
 @router.get("/plants/modal/new", response_class=HTMLResponse)
 def new_plant_modal():
     """Renders New Plant registration modal."""
@@ -146,6 +223,7 @@ def new_plant_modal():
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
+@router.get("/plants/{name}/modal/view", response_class=HTMLResponse)
 def view_plant_modal(name: str):
     """Renders comprehensive technical dossier modal."""
     plant = db.get_plant(name)
@@ -167,6 +245,10 @@ async def create_plant_submit(
     sowing_cutting_date: str = Form(""),
     graft: str = Form(""),
     padres: str = Form(""),
+    padre1: Optional[str] = Form(None),
+    padre2: Optional[str] = Form(None),
+    sel_padre1: Optional[str] = Form(None),
+    sel_padre2: Optional[str] = Form(None),
     last_pruned: str = Form(""),
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
@@ -216,6 +298,40 @@ async def create_plant_submit(
                     if ok and fn:
                         saved_photos.append(fn)
 
+    all_keys = db.get_all_keys()
+    all_keys_set = set(k.strip().lower() for k in all_keys)
+
+    p1 = (padre1 or "").strip()
+    p2 = (padre2 or "").strip()
+
+    if p1 and p1.lower() not in ("unknown", "desconocido"):
+        if p1.lower() == key.lower():
+            return HTMLResponse(f"""
+                <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ Un ejemplar no puede ser su propio progenitor ('{p1}').
+                </div>
+            """)
+        if p1.lower() not in all_keys_set:
+            return HTMLResponse(f"""
+                <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ El Progenitor 1 '{p1}' no existe en la base de datos. Solo se pueden registrar claves existentes en la colección, o dejarlo vacío para 'unknown'.
+                </div>
+            """)
+
+    if p2 and p2.lower() not in ("unknown", "desconocido"):
+        if p2.lower() == key.lower():
+            return HTMLResponse(f"""
+                <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ Un ejemplar no puede ser su propio progenitor ('{p2}').
+                </div>
+            """)
+        if p2.lower() not in all_keys_set:
+            return HTMLResponse(f"""
+                <div id="new-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ El Progenitor 2 '{p2}' no existe en la base de datos. Solo se pueden registrar claves existentes en la colección, o dejarlo vacío para 'unknown'.
+                </div>
+            """)
+
     now_str = datetime.now().strftime("%Y-%m-%d")
     plant_data = {
         "name": key,
@@ -223,11 +339,11 @@ async def create_plant_submit(
         "aka": aka.strip(),
         "location": location.strip(),
         "status": status.strip() or "OK",
-        "height": height.strip() or f"{now_str} - 0 cm",
+        "height": height.strip(),
         "registration_date": registration_date.strip() or now_str,
         "sowing_cutting_date": sowing_cutting_date.strip() or now_str,
         "graft": graft.strip(),
-        "padres": padres.strip(),
+        "padres": db.combine_parents(p1, p2, fallback=padres),
         "last_pruned": last_pruned.strip(),
         "last_repotted": last_repotted.strip(),
         "fertilizante": fertilizante.strip(),
@@ -275,6 +391,10 @@ async def update_plant_submit(
     sowing_cutting_date: str = Form(""),
     graft: str = Form(""),
     padres: str = Form(""),
+    padre1: Optional[str] = Form(None),
+    padre2: Optional[str] = Form(None),
+    sel_padre1: Optional[str] = Form(None),
+    sel_padre2: Optional[str] = Form(None),
     last_pruned: str = Form(""),
     last_repotted: str = Form(""),
     fertilizante: str = Form(""),
@@ -307,6 +427,40 @@ async def update_plant_submit(
                     if ok and saved_fn:
                         db.add_photo_to_plant(key, saved_fn)
 
+    all_keys = db.get_all_keys()
+    all_keys_set = set(k.strip().lower() for k in all_keys)
+
+    p1 = (padre1 or "").strip()
+    p2 = (padre2 or "").strip()
+
+    if p1 and p1.lower() not in ("unknown", "desconocido"):
+        if p1.lower() == key.lower():
+            return HTMLResponse(f"""
+                <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ Un ejemplar no puede ser su propio progenitor ('{p1}').
+                </div>
+            """)
+        if p1.lower() not in all_keys_set:
+            return HTMLResponse(f"""
+                <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ El Progenitor 1 '{p1}' no existe en la base de datos. Solo se pueden registrar claves existentes en la colección, o dejarlo vacío para 'unknown'.
+                </div>
+            """)
+
+    if p2 and p2.lower() not in ("unknown", "desconocido"):
+        if p2.lower() == key.lower():
+            return HTMLResponse(f"""
+                <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ Un ejemplar no puede ser su propio progenitor ('{p2}').
+                </div>
+            """)
+        if p2.lower() not in all_keys_set:
+            return HTMLResponse(f"""
+                <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                    ✕ El Progenitor 2 '{p2}' no existe en la base de datos. Solo se pueden registrar claves existentes en la colección, o dejarlo vacío para 'unknown'.
+                </div>
+            """)
+
     # 3. Update plant botanical metadata
     plant_data = {
         "species": species.strip(),
@@ -317,7 +471,7 @@ async def update_plant_submit(
         "registration_date": registration_date.strip(),
         "sowing_cutting_date": sowing_cutting_date.strip(),
         "graft": graft.strip(),
-        "padres": padres.strip(),
+        "padres": db.combine_parents(p1, p2, fallback=padres),
         "last_pruned": last_pruned.strip(),
         "last_repotted": last_repotted.strip(),
         "fertilizante": fertilizante.strip(),
@@ -578,6 +732,23 @@ def download_full_catalog_pdf():
             "Cache-Control": "no-cache"
         }
     )
+
+
+@router.get("/admin/check-integrity", response_class=HTMLResponse)
+def admin_check_integrity():
+    """Runs on-demand SQLite PRAGMA integrity_check and returns updated health card."""
+    ok, msg = db.check_database_integrity()
+    display_msg = "INTEGRIDAD OK (0 anomalías detectadas)" if ok else f"FALLO: {msg}"
+    from .templates.admin import render_db_health_card
+    return HTMLResponse(render_db_health_card(integrity_result_msg=display_msg))
+
+
+@router.post("/admin/create-backup", response_class=HTMLResponse)
+def admin_create_backup():
+    """Forces an immediate online SQLite backup and returns updated health card."""
+    bk_path = db.backup_db()
+    from .templates.admin import render_db_health_card
+    return HTMLResponse(render_db_health_card(integrity_result_msg=f"RESPALDO CREADO ({os.path.basename(bk_path)})"))
 
 
 @router.get("/admin/backup.db")
