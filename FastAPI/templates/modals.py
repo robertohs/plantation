@@ -12,48 +12,51 @@ from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH, render_photo_item_
 def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = False) -> str:
     """Consolidated form fields generator for both New and Edit plant modals."""
     now_str = datetime.now().strftime("%Y-%m-%d")
-    p = plant or {}
-    name_val = p.get("name", "")
-    species_val = p.get("species", "")
+    plant_data = plant or {}
+    name_val = plant_data.get("name", "")
+    species_val = plant_data.get("species", "")
     if not is_edit and not species_val:
         species_val = "Adenium obesum"
-    aka_val = p.get("aka", "")
-    loc_val = p.get("location", "")
-    status_val = db.normalize_status(p.get("status"))
+    aka_val = plant_data.get("aka", "")
+    loc_val = plant_data.get("location", "")
+    status_val = db.normalize_status(plant_data.get("status"))
 
     def _sanitize_date(val: Optional[str]) -> str:
         if not val:
             return ""
-        s = val.strip()
+        s = str(val).strip()
+        dt = db.parse_plant_date(s)
+        if dt:
+            return dt.strftime("%Y-%m-%d")
         if len(s) >= 10 and s[4] == '-' and s[7] == '-':
             return s[:10]
         return ""
 
-    height_val = p.get("height", "")
+    height_val = plant_data.get("height", "")
     if not is_edit and not height_val:
         height_val = f"0 cm ({now_str})"
 
-    sow_val = _sanitize_date(p.get("sowing_cutting_date"))
+    sow_val = _sanitize_date(plant_data.get("sowing_cutting_date"))
     if not is_edit and not sow_val:
         sow_val = now_str
 
-    graft_val = p.get("graft", "")
-    padres_val = (p.get("padres") or "").strip()
+    graft_val = plant_data.get("graft", "")
+    padres_val = (plant_data.get("padres") or "").strip()
     padre1_val, padre2_val = db.split_parents(padres_val)
-    pruned_val = p.get("last_pruned", "")
-    repotted_val = p.get("last_repotted", "")
-    fert_val = p.get("fertilizante", "")
-    comm_val = p.get("comentarios", "")
-    indxw_val = int(p.get("indxw", 0))
+    pruned_val = plant_data.get("last_pruned", "")
+    repotted_val = plant_data.get("last_repotted", "")
+    fert_val = plant_data.get("fertilizante", "")
+    comm_val = plant_data.get("comentarios", "")
+    indxw_val = int(plant_data.get("indxw", 0))
 
     existing_keys = db.get_all_keys()
     plants_list = db.get_plants()
     available_parents = [item for item in plants_list if item.get("name") != name_val]
     datalist_items = []
-    for p in available_parents:
-        p_name = p.get("name", "")
-        p_spec = p.get("species", "")
-        p_aka = f" ({p.get('aka')})" if p.get("aka") else ""
+    for parent_item in available_parents:
+        p_name = parent_item.get("name", "")
+        p_spec = parent_item.get("species", "")
+        p_aka = f" ({parent_item.get('aka')})" if parent_item.get("aka") else ""
         datalist_items.append(f'<option value="{p_name}">{p_name} — {p_spec}{p_aka}</option>')
     keys_datalist = "".join(datalist_items)
 
@@ -95,8 +98,11 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
         <div id="key-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;"></div>
     """
 
+    reg_date_val = plant_data.get("registration_date") or now_str
+
     return f"""
         <input type="hidden" id="inp-indxw" name="indxw" value="{indxw_val}" />
+        <input type="hidden" id="inp-registration_date" name="registration_date" value="{reg_date_val}" />
         <datalist id="existing-plant-keys">
             {keys_datalist}
         </datalist>
@@ -174,12 +180,33 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-sowing_cutting_date">FECHA SIEMBRA / ESQUEJADO</label>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="inp-sowing_cutting_date" style="margin-bottom: 0;">FECHA SIEMBRA / ESQUEJADO</label>
+                    <div style="display: flex; gap: 4px;">
+                        <button type="button"
+                                class="btn-today"
+                                onclick="setSowingDateToday();"
+                                title="Rellenar con la fecha de hoy ({now_str})">
+                            [Hoy]
+                        </button>
+                        <button type="button"
+                                class="btn-today"
+                                onclick="clearSowingDate();"
+                                style="color: var(--text-dim);"
+                                title="Limpiar fecha de siembra (sin fecha / S/D)">
+                            [Borrar]
+                        </button>
+                    </div>
+                </div>
                 <input type="date"
                        id="inp-sowing_cutting_date"
                        name="sowing_cutting_date"
                        class="form-input"
-                       value="{sow_val}" />
+                       value="{sow_val}"
+                       max="2100-12-31"
+                       oninput="updateSowingDateAgePreview();"
+                       onchange="updateSowingDateAgePreview();" />
+                <div id="sowing-age-preview" style="font-size: 10.5px; margin-top: 3px; min-height: 16px;"></div>
             </div>
 
             <div class="form-group">
@@ -349,6 +376,74 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
         </div>
 
         <script>
+            function updateSowingDateAgePreview() {{
+                var el = document.getElementById('inp-sowing_cutting_date');
+                var preview = document.getElementById('sowing-age-preview');
+                if (!el || !preview) return;
+                var val = (el.value || '').trim();
+                if (!val) {{
+                    preview.innerHTML = '<span style="color: var(--text-dim);">Sin fecha (edad indeterminada o S/D)</span>';
+                    return;
+                }}
+                var parts = val.split('-');
+                if (parts.length !== 3) {{
+                    preview.innerHTML = '<span style="color: var(--peach-orange);">Formato esperado: AAAA-MM-DD</span>';
+                    return;
+                }}
+                var y = parseInt(parts[0], 10);
+                var m = parseInt(parts[1], 10);
+                var d = parseInt(parts[2], 10);
+                if (isNaN(y) || isNaN(m) || isNaN(d)) {{
+                    preview.innerHTML = '<span style="color: var(--peach-orange);">Fecha no válida</span>';
+                    return;
+                }}
+                var now = new Date();
+                var birth = new Date(y, m - 1, d);
+                if (birth > now) {{
+                    preview.innerHTML = '<span style="color: var(--peach-orange);">Fecha futura: 0.0 años (0 meses)</span>';
+                    return;
+                }}
+                var diffMonths = (now.getFullYear() - y) * 12 + (now.getMonth() - (m - 1));
+                if (now.getDate() < d) diffMonths -= 1;
+                if (diffMonths < 0) diffMonths = 0;
+                var yearsDec = (diffMonths / 12.0).toFixed(1);
+                var yFull = Math.floor(diffMonths / 12);
+                var remM = diffMonths % 12;
+                var detail = yearsDec + ' años (' + diffMonths + ' meses)';
+                if (yFull > 0 && remM > 0) {{
+                    detail += ' · ' + yFull + (yFull === 1 ? ' año' : ' años') + ', ' + remM + (remM === 1 ? ' mes' : ' meses');
+                }}
+                preview.innerHTML = '<span style="color: var(--green-sage); font-weight: 600;">✓ Edad calculada: ' + detail + '</span>';
+            }}
+
+            function setSowingDateToday() {{
+                var el = document.getElementById('inp-sowing_cutting_date');
+                if (el) {{
+                    var now = new Date();
+                    var pad = function(n) {{ return (n < 10 ? '0' : '') + n; }};
+                    var today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+                    el.value = today;
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    updateSowingDateAgePreview();
+                }}
+            }}
+
+            function clearSowingDate() {{
+                var el = document.getElementById('inp-sowing_cutting_date');
+                if (el) {{
+                    el.value = '';
+                    el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    updateSowingDateAgePreview();
+                }}
+            }}
+
+            setTimeout(function() {{
+                updateSowingDateAgePreview();
+                updateCombinedPadres();
+            }}, 40);
+
             function updateCombinedPadres() {{
                 var p1 = document.getElementById('inp-padre1');
                 var p2 = document.getElementById('inp-padre2');

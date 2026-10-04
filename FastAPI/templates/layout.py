@@ -285,8 +285,19 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                     </button>
                     <button type="button"
                             class="status-pill status-pill-age age-filter-btn"
+                            onclick="applyPlantFilter('age', '2_to_3', this)">
+                        2 - 3 
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-age age-filter-btn"
                             onclick="applyPlantFilter('age', '3_plus', this)">
                         3+ 
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-age age-filter-btn"
+                            onclick="applyPlantFilter('age', 'sd', this)"
+                            title="Ejemplares sin fecha registrada de siembra o esquejado">
+                        S/D
                     </button>
                 </div>
 
@@ -313,6 +324,12 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                             class="status-pill status-pill-height height-filter-btn"
                             onclick="applyPlantFilter('height', '35_plus', this)">
                         35+ cm
+                    </button>
+                    <button type="button"
+                            class="status-pill status-pill-height height-filter-btn"
+                            onclick="applyPlantFilter('height', 'sd', this)"
+                            title="Ejemplares sin medición de altura registrada">
+                        S/D
                     </button>
                 </div>
             </div>
@@ -539,7 +556,44 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
         document.addEventListener('keydown', function(e) {{
             if (e.key === 'Escape') {{
-                closeAppConfirmModal();
+                var confirmModal = document.getElementById('app-confirm-modal');
+                if (confirmModal && confirmModal.style.display !== 'none') {{
+                    closeAppConfirmModal();
+                    return;
+                }}
+                var mc = document.getElementById('modal-container');
+                if (mc && mc.children.length > 0) {{
+                    var editModal = document.getElementById('edit-plant-modal');
+                    if (editModal) {{
+                        var keyEl = editModal.querySelector('.plant-key');
+                        var k = keyEl ? keyEl.textContent.trim() : '';
+                        if (k) {{
+                            htmx.ajax('GET', '/plants/' + encodeURIComponent(k), {{ target: '#modal-container', swap: 'innerHTML' }});
+                            return;
+                        }}
+                    }}
+                    mc.innerHTML = '';
+                }}
+            }}
+        }});
+
+        // Close modals when clicking directly on overlay backdrop
+        document.addEventListener('click', function(e) {{
+            if (e.target && e.target.classList && e.target.classList.contains('modal-overlay')) {{
+                if (e.target.id === 'app-confirm-modal') {{
+                    closeAppConfirmModal();
+                    return;
+                }}
+                if (e.target.id === 'edit-plant-modal') {{
+                    var keyEl = e.target.querySelector('.plant-key');
+                    var k = keyEl ? keyEl.textContent.trim() : '';
+                    if (k) {{
+                        htmx.ajax('GET', '/plants/' + encodeURIComponent(k), {{ target: '#modal-container', swap: 'innerHTML' }});
+                        return;
+                    }}
+                }}
+                var mc = document.getElementById('modal-container');
+                if (mc) mc.innerHTML = '';
             }}
         }});
 

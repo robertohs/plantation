@@ -21,7 +21,6 @@ mimetypes.add_type("image/gif", ".gif")
 mimetypes.add_type("image/svg+xml", ".svg")
 
 from contextlib import asynccontextmanager
-
 import db
 import img_conv
 from FastAPI.fapi import router as fapi_router

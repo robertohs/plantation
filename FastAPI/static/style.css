@@ -239,6 +239,10 @@ body { background: var(--bg-base); color: var(--text-main); font-size: 13.5px; l
 .form-input:focus, .form-textarea:focus { border-color: var(--info-field-color); box-shadow: 0 0 0 1px var(--info-field-color); }
 .form-input::placeholder, .form-textarea::placeholder { color: var(--text-dim); opacity: 0.6; font-weight: normal; }
 input[type="date"].form-input { color-scheme: dark; color: var(--info-field-color); }
+.status-radio-group { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.status-radio-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; padding: 4px 10px; border-radius: 4px; background: var(--bg-crust); border: 1px solid var(--border-dim); transition: all 0.15s ease; user-select: none; }
+.status-radio-label:hover { border-color: var(--accent); }
+.status-radio-label input[type="radio"] { cursor: pointer; accent-color: var(--accent); }
 .form-textarea { min-height: 70px; resize: vertical; }
 
 .drop-zone {

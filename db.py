@@ -103,14 +103,30 @@ def clean_key(key: str) -> str:
 
 
 def parse_plant_date(s: Optional[str]) -> Optional[datetime]:
-    """Parses a date string in ISO YYYY-MM-DD or standard formats."""
+    """Parses a date string in ISO YYYY-MM-DD or standard formats (DD-MM-YYYY, YYYY/MM/DD, etc.)."""
     if not s or not isinstance(s, str):
         return None
-    m = re.search(r'(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?', s.strip())
-    if m:
+    clean = s.strip()
+    # Try YYYY-MM-DD or YYYY/MM/DD
+    m1 = re.search(r'(\d{4})[-/](\d{1,2})(?:[-/](\d{1,2}))?', clean)
+    if m1:
         try:
-            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3) or 1))
-        except ValueError:
+            return datetime(int(m1.group(1)), int(m1.group(2)), int(m1.group(3) or 1))
+        except (ValueError, OverflowError):
+            pass
+    # Try DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+    m2 = re.search(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})', clean)
+    if m2:
+        try:
+            return datetime(int(m2.group(3)), int(m2.group(2)), int(m2.group(1)))
+        except (ValueError, OverflowError):
+            pass
+    # Try YYYY only
+    m3 = re.search(r'^\s*(\d{4})\s*$', clean)
+    if m3:
+        try:
+            return datetime(int(m3.group(1)), 1, 1)
+        except (ValueError, OverflowError):
             pass
     return None
 
@@ -164,15 +180,21 @@ def calculate_age_display(sowing_cutting_date: Optional[str], graft: Optional[st
 
 def matches_age_filter(months: Optional[int], filter_key: str) -> bool:
     """Checks if biological age in months matches age filter range."""
-    if months is None:
-        return False
+    if not filter_key or filter_key in ("ALL", "", "*", "all", "todas", "todos"):
+        return True
     k = filter_key.strip().lower()
-    if k in ("less_1", "<1", "less_than_1", "menor_1"):
+    if months is None:
+        return k in ("sd", "s/d", "sin_fecha", "unknown", "none")
+    if k in ("less_1", "<1", "< 1", "less_than_1", "menor_1"):
         return months < 12
     if k in ("1_to_2", "1-2", "1_2", "1to2"):
-        return 12 <= months < 36
-    if k in ("3_plus", "3+", "3plus", "mas_3"):
+        return 12 <= months < 24
+    if k in ("2_to_3", "2-3", "2_3", "2to3"):
+        return 24 <= months < 36
+    if k in ("3_plus", "3+", "3plus", "mas_3", "3_o_mas"):
         return months >= 36
+    if k in ("sd", "s/d", "sin_fecha"):
+        return False
     return True
 
 
@@ -358,8 +380,12 @@ def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:
 
     height_cm = extract_height_cm(height_str)
     if height_cm is None:
-        return False
+        return key in ("sd", "s/d", "sin_medir", "unknown", "none")
 
+    if key in ("less_5", "<5", "< 5", "menor_5", "mini"):
+        return height_cm < 5.0
+    if key in ("5_to_15", "5-15", "5_15", "5to15"):
+        return 5.0 <= height_cm < 15.0
     if key in ("less_15", "<15", "< 15", "less_than_15", "menor_15"):
         return height_cm < 15.0
     if key in ("15_to_35", "15-35", "15_35", "15to35"):
@@ -659,6 +685,13 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     raw_repotted = (data.get("last_repotted") or "").strip()
     repotted_val = format_care_entry(raw_repotted, force_date=True) if raw_repotted else ""
 
+    raw_sow = (data.get("sowing_cutting_date") or "").strip()
+    if raw_sow:
+        dt_sow = parse_plant_date(raw_sow)
+        sow_val = dt_sow.strftime("%Y-%m-%d") if dt_sow else raw_sow
+    else:
+        sow_val = ""
+
     with get_connection() as conn:
         if conn.execute("SELECT 1 FROM plants WHERE name = ?", (key,)).fetchone():
             return False, f"La clave '{key}' ya existe en la base de datos."
@@ -672,7 +705,7 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
         """, (
             key, species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
             height_val, reg_date, (data.get("padres") or "").strip(),
-            (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
+            sow_val, (data.get("graft") or "").strip(),
             pruned_val, repotted_val,
             (data.get("fertilizante") or "").strip(), photos_json,
             normalize_status(data.get("status")), (data.get("comentarios") or "").strip(), indxw_val, now, now
@@ -714,6 +747,13 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
         raw_repotted = (data.get("last_repotted") or "").strip()
         repotted_val = format_care_entry(raw_repotted, old_val=old_repotted) if raw_repotted else ""
 
+        raw_sow = (data.get("sowing_cutting_date") or "").strip()
+        if raw_sow:
+            dt_sow = parse_plant_date(raw_sow)
+            sow_val = dt_sow.strftime("%Y-%m-%d") if dt_sow else raw_sow
+        else:
+            sow_val = ""
+
         if "indxw" in data:
             indxw_val = 1 if data["indxw"] in (1, "1", True, "true", "True", "on") else 0
         else:
@@ -728,7 +768,7 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
         """, (
             species, (data.get("aka") or "").strip(), (data.get("location") or "").strip(),
             height_val, reg_date, (data.get("padres") or "").strip(),
-            (data.get("sowing_cutting_date") or "").strip(), (data.get("graft") or "").strip(),
+            sow_val, (data.get("graft") or "").strip(),
             pruned_val, repotted_val,
             (data.get("fertilizante") or "").strip(), normalize_status(data.get("status")),
             (data.get("comentarios") or "").strip(), indxw_val, now, key

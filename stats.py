@@ -1,5 +1,5 @@
 """
-Plantation - Botanical Analytics & Statistics Engine
+Plantation - Botanical Analytics & Statistics Engine.
 Consolidates all statistical logic, mathematical aggregations, SVG chart generators,
 and dashboard templates for specimen analysis in a single isolated module.
 """

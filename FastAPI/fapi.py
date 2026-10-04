@@ -99,10 +99,11 @@ def list_plants_partial(
 # ==============================================================================
 
 @router.get("/plants/validate-key", response_class=HTMLResponse)
-def validate_key_endpoint(name: str = Query("")):
+def validate_key_endpoint(name: Optional[str] = None, key: Optional[str] = None):
     """Validates specimen key availability in real-time as the user types."""
-    key = db.clean_key(name)
-    if not key:
+    raw = name if isinstance(name, str) else (key if isinstance(key, str) else "")
+    k = db.clean_key(raw)
+    if not k:
         return HTMLResponse("""
             <script>
                 var btn = document.getElementById('new-plant-submit-btn');
@@ -112,11 +113,11 @@ def validate_key_endpoint(name: str = Query("")):
             </script>
         """)
 
-    existing = db.get_plant(key)
+    existing = db.get_plant(k)
     if existing:
         return HTMLResponse(f"""
             <span style="color: var(--red-crimson); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
-                ✕ La clave '{key}' ya existe en el registro. Ingrese una clave única.
+                ✕ La clave '{k}' ya existe en el registro. Ingrese una clave única.
             </span>
             <script>
                 var btn = document.getElementById('new-plant-submit-btn');
@@ -128,7 +129,7 @@ def validate_key_endpoint(name: str = Query("")):
     else:
         return HTMLResponse(f"""
             <span style="color: var(--green-sage); font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                ✓ Clave '{key}' disponible para registro.
+                ✓ Clave '{k}' disponible para registro.
             </span>
             <script>
                 var btn = document.getElementById('new-plant-submit-btn');
@@ -141,13 +142,16 @@ def validate_key_endpoint(name: str = Query("")):
 
 @router.get("/plants/validate-parent-key", response_class=HTMLResponse)
 def validate_parent_key_endpoint(
-    key: str = Query(""),
-    num: int = Query(1),
-    plant: str = Query("")
+    key: Optional[str] = None,
+    padre1: Optional[str] = None,
+    padre2: Optional[str] = None,
+    num: int = 1,
+    plant: str = ""
 ):
     """Validates that a parent key exists in the database and is not the plant itself."""
-    clean_k = (key or "").strip()
-    clean_plant = (plant or "").strip()
+    val = key if isinstance(key, str) else (padre1 if isinstance(padre1, str) else (padre2 if isinstance(padre2, str) else ""))
+    clean_k = (val or "").strip()
+    clean_plant = (plant if isinstance(plant, str) else "").strip()
     inp_id = f"inp-padre{num}"
 
     # If empty or explicit 'unknown': valid default
@@ -185,9 +189,10 @@ def validate_parent_key_endpoint(
     if existing:
         aka = f' ("{existing.get("aka")}")' if existing.get("aka") else ""
         sp = existing.get("species", "")
+        clean_name = existing.get("name", clean_k)
         return HTMLResponse(f"""
             <span style="color: var(--green-sage); font-weight: 600; font-size: 11px;">
-                ✓ Clave existente: {clean_k} — {sp}{aka}
+                ✓ Clave existente: {clean_name} — {sp}{aka}
             </span>
             <script>
                 var inp = document.getElementById('{inp_id}');
@@ -333,6 +338,12 @@ async def create_plant_submit(
             """)
 
     now_str = datetime.now().strftime("%Y-%m-%d")
+    clean_sow = (sowing_cutting_date or "").strip()
+    if clean_sow:
+        dt_sow = db.parse_plant_date(clean_sow)
+        if dt_sow:
+            clean_sow = dt_sow.strftime("%Y-%m-%d")
+
     plant_data = {
         "name": key,
         "species": species.strip() or "Adenium obesum",
@@ -341,7 +352,7 @@ async def create_plant_submit(
         "status": status.strip() or "OK",
         "height": height.strip(),
         "registration_date": registration_date.strip() or now_str,
-        "sowing_cutting_date": sowing_cutting_date.strip() or now_str,
+        "sowing_cutting_date": clean_sow,
         "graft": graft.strip(),
         "padres": db.combine_parents(p1, p2, fallback=padres),
         "last_pruned": last_pruned.strip(),
@@ -462,14 +473,21 @@ async def update_plant_submit(
             """)
 
     # 3. Update plant botanical metadata
+    clean_sow = (sowing_cutting_date or "").strip()
+    if clean_sow:
+        dt_sow = db.parse_plant_date(clean_sow)
+        if dt_sow:
+            clean_sow = dt_sow.strftime("%Y-%m-%d")
+
+    orig_reg_date = plant.get("registration_date") if plant else ""
     plant_data = {
         "species": species.strip(),
         "aka": aka.strip(),
         "location": location.strip(),
         "status": status.strip(),
         "height": height.strip(),
-        "registration_date": registration_date.strip(),
-        "sowing_cutting_date": sowing_cutting_date.strip(),
+        "registration_date": registration_date.strip() or orig_reg_date,
+        "sowing_cutting_date": clean_sow,
         "graft": graft.strip(),
         "padres": db.combine_parents(p1, p2, fallback=padres),
         "last_pruned": last_pruned.strip(),
@@ -482,20 +500,24 @@ async def update_plant_submit(
 
     success, msg = db.update_plant(key, plant_data)
     if not success:
-        return HTMLResponse(f"<div class='alert-box alert-error'>{msg}</div>", status_code=400)
+        return HTMLResponse(f"""
+            <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
+                ✕ {msg}
+            </div>
+        """, status_code=400)
 
     updated_plant = db.get_plant(key)
     if not updated_plant:
         return HTMLResponse("<div class='alert-box alert-error'>Error al recuperar ejemplar.</div>", status_code=500)
 
-    # When saving changes in editar datos, take user back to the main page (close the modal)
+    # Return updated technical dossier directly with success banner to #modal-container
     # and update the plant card, stats bar, and admin tray (if open) on the main page via OOB swaps
-    close_modal = ""
+    updated_dossier = render_view_plant_modal_content(updated_plant, alert_msg=f"Cambios en el ejemplar '{key}' guardados correctamente.")
     oob_card = render_card_html(updated_plant, oob=True)
     oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = get_oob_admin(request)
 
-    return HTMLResponse(close_modal + oob_card + oob_stats + oob_admin)
+    return HTMLResponse(updated_dossier + oob_card + oob_stats + oob_admin)
 
 
 @router.delete("/plants/{name}", response_class=HTMLResponse)

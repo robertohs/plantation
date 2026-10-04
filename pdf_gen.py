@@ -1,5 +1,5 @@
 """
-High-performance, ink-friendly PDF generation for Plantation using fpdf2.
+Plantation - High-performance, ink-friendly PDF generation using fpdf2.
 Replaces all legacy HTML/WeasyPrint rendering with fast, vector-crisp PDF output.
 """
 
