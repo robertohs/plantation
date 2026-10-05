@@ -215,14 +215,20 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="inp-graft">INJERTO / PORTAINJERTO</label>
+                <label class="form-label" for="inp-graft">TIPO (INJERTO, SEMILLA, CUTTING)</label>
                 <input type="text"
                        id="inp-graft"
                        name="graft"
                        class="form-input"
                        value="{graft_val}"
-                       list="existing-plant-keys"
-                       placeholder="Ej: Sin injerto / Myrtillocactus" />
+                       list="cultivation-type-datalist"
+                       placeholder="Ej: Semilla + Injerto, Semilla, Injerto, Cutting" />
+                <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px;">
+                    <button type="button" class="btn-today" onclick="document.getElementById('inp-graft').value='Semilla + Injerto'">Semilla + Injerto</button>
+                    <button type="button" class="btn-today" onclick="document.getElementById('inp-graft').value='Semilla'">Semilla</button>
+                    <button type="button" class="btn-today" onclick="document.getElementById('inp-graft').value='Injerto'">Injerto</button>
+                    <button type="button" class="btn-today" onclick="document.getElementById('inp-graft').value='Cutting'">Cutting</button>
+                </div>
             </div>
 
             <div class="form-group full" style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px 14px;">
@@ -1342,8 +1348,9 @@ def render_bulk_create_modal() -> str:
             <!-- MODAL FORM -->
             <form id="bulk-plant-form"
                   hx-post="/plants/bulk-create"
-                  hx-target="#plant-container"
+                  hx-target="#modal-container"
                   hx-swap="innerHTML"
+                  hx-indicator="#bulk-submit-spinner"
                   enctype="multipart/form-data"
                   style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden;">
 
@@ -1438,10 +1445,10 @@ def render_bulk_create_modal() -> str:
                                            class="form-input"
                                            value="10"
                                            min="1"
-                                           max="200"
+                                           max="10000"
                                            oninput="onBulkInputsChanged();" />
                                     <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                        Total de plantas a crear
+                                        Total de plantas a crear (hasta 10.000)
                                     </div>
                                 </div>
 
@@ -1508,6 +1515,13 @@ def render_bulk_create_modal() -> str:
                     <datalist id="bulk-species-datalist">{species_options}</datalist>
                     <datalist id="bulk-locations-datalist">{location_options}</datalist>
                     <datalist id="bulk-parent-keys-datalist">{parent_options}</datalist>
+                    <datalist id="cultivation-type-datalist">
+                        <option value="Semilla + Injerto">
+                        <option value="Semilla">
+                        <option value="Injerto">
+                        <option value="Cutting">
+                        <option value="Pie franco">
+                    </datalist>
 
                     <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
                         <div style="font-size: 12px; font-weight: 700; color: var(--blue-sky); margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -1539,19 +1553,18 @@ def render_bulk_create_modal() -> str:
                                 </div>
                             </div>
 
-                            <!-- Alias Base + Auto Numbering -->
+                            <!-- Alias (Exact Botanical Alias) -->
                             <div class="form-group">
-                                <label class="form-label" for="bulk-aka">ALIAS BASE (OPCIONAL)</label>
+                                <label class="form-label" for="bulk-aka">ALIAS (OPCIONAL)</label>
                                 <input type="text"
                                        id="bulk-aka"
                                        name="aka"
                                        class="form-input"
-                                       placeholder="Ej: Lote Semillero, Clon V, Ocaso"
+                                       placeholder="Ej: GOLDEN, KETO-33D!, Drunken, Drunken JAPANSE PRO MAX, Deki1"
                                        autocomplete="off" />
-                                <label style="display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 10.5px; color: var(--text-dim); cursor: pointer;">
-                                    <input type="checkbox" name="auto_number_alias" value="1" checked />
-                                    <span>Numerar alias secuencialmente (ej: <code>Lote #1, Lote #2...</code>)</span>
-                                </label>
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                    Alias botánico idéntico para todos los ejemplares del lote (sin numeración secuencial).
+                                </div>
                             </div>
 
                             <!-- Location -->
@@ -1583,13 +1596,20 @@ def render_bulk_create_modal() -> str:
 
                             <!-- Cultivation Type / Graft -->
                             <div class="form-group">
-                                <label class="form-label" for="bulk-graft">TIPO DE CULTIVO / INJERTO</label>
+                                <label class="form-label" for="bulk-graft">TIPO (INJERTO, SEMILLA, CUTTING)</label>
                                 <input type="text"
                                        id="bulk-graft"
                                        name="graft"
                                        class="form-input"
-                                       value="Pie franco"
-                                       placeholder="Ej: Pie franco, Hylocereus, Pereskiopsis" />
+                                       value="Semilla + Injerto"
+                                       list="cultivation-type-datalist"
+                                       placeholder="Ej: Semilla + Injerto, Semilla, Injerto, Cutting" />
+                                <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px;">
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Semilla + Injerto'">Semilla + Injerto</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Semilla'">Semilla</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Injerto'">Injerto</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Cutting'">Cutting</button>
+                                </div>
                             </div>
 
                             <!-- Dates: Sowing / Cutting -->
@@ -1774,7 +1794,7 @@ def render_bulk_create_modal() -> str:
                 if (isNaN(startNum) || startNum < 1) startNum = 1;
                 var count = parseInt(document.getElementById('bulk-count')?.value || '10', 10);
                 if (isNaN(count) || count < 1) count = 1;
-                if (count > 200) count = 200;
+                if (count > 10000) count = 10000;
                 var padMode = parseInt(document.getElementById('bulk-pad-zeros')?.value || '2', 10);
 
                 for (var i = startNum; i < startNum + count; i++) {{
@@ -1808,16 +1828,20 @@ def render_bulk_create_modal() -> str:
                 if (total === 0) {{
                     bannerHtml = '<div style="color: var(--text-dim); font-size: 11px;">Indique un prefijo o ingrese claves manuales.</div>';
                 }} else if (totalConf === 0) {{
-                    bannerHtml = '<div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;"><span>✓</span><div><strong>' + total + ' claves listas y disponibles:</strong> Cero conflictos en la BD.</div></div>';
+                    bannerHtml = '<div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;"><span>✓</span><div><strong>' + total.toLocaleString() + ' claves listas y disponibles:</strong> Cero conflictos en la BD.</div></div>';
                 }} else if (skipConflicts) {{
-                    bannerHtml = '<div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;"><span>⚠️</span><div><strong>' + totalConf + ' clave(s) en uso:</strong> Se registrarán solo las <strong>' + totalAvail + ' claves disponibles</strong> (omitiendo existentes).</div></div>';
+                    bannerHtml = '<div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;"><span>⚠️</span><div><strong>' + totalConf.toLocaleString() + ' clave(s) en uso:</strong> Se registrarán solo las <strong>' + totalAvail.toLocaleString() + ' claves disponibles</strong> (omitiendo existentes).</div></div>';
                 }} else {{
-                    bannerHtml = '<div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;"><span>✕</span><div><strong>CONFLICTO:</strong> ' + totalConf + ' clave(s) ya existen. Marque "Omitir existentes" o cambie el número inicial.</div></div>';
+                    bannerHtml = '<div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;"><span>✕</span><div><strong>CONFLICTO:</strong> ' + totalConf.toLocaleString() + ' clave(s) ya existen. Marque "Omitir existentes" o cambie el número inicial.</div></div>';
                 }}
 
                 var chipsHtml = '';
                 var confSet = new Set(conf);
-                generatedKeys.forEach(function(k) {{
+                var maxRender = 60;
+                var hasTruncation = (generatedKeys.length > maxRender);
+                var renderList = hasTruncation ? generatedKeys.slice(0, 50) : generatedKeys;
+
+                renderList.forEach(function(k) {{
                     if (confSet.has(k)) {{
                         chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; text-decoration: line-through;" title="Ya existe en la BD">' + k + ' ✕</span> ';
                     }} else {{
@@ -1825,10 +1849,21 @@ def render_bulk_create_modal() -> str:
                     }}
                 }});
 
+                if (hasTruncation) {{
+                    chipsHtml += '<span style="color: var(--peach-orange); font-size: 11px; padding: 2px 6px; font-weight: 600; align-self: center;">... y ' + (generatedKeys.length - 60).toLocaleString() + ' claves más en secuencia ...</span> ';
+                    generatedKeys.slice(-10).forEach(function(k) {{
+                        if (confSet.has(k)) {{
+                            chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; text-decoration: line-through;" title="Ya existe en la BD">' + k + ' ✕</span> ';
+                        }} else {{
+                            chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); color: var(--green-sage); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px;" title="Disponible para registro">' + k + ' ✓</span> ';
+                        }}
+                    }});
+                }}
+
                 container.innerHTML = bannerHtml +
                     '<div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">' +
-                    '<span>PREVISUALIZACIÓN DE CLAVES (' + total + '):</span>' +
-                    '<span style="color: var(--text-main); font-weight: 700;">🟢 ' + totalAvail + ' DISPONIBLES · 🔴 ' + totalConf + ' EN USO</span>' +
+                    '<span>PREVISUALIZACIÓN DE CLAVES (' + total.toLocaleString() + '):</span>' +
+                    '<span style="color: var(--text-main); font-weight: 700;">🟢 ' + totalAvail.toLocaleString() + ' DISPONIBLES · 🔴 ' + totalConf.toLocaleString() + ' EN USO</span>' +
                     '</div>' +
                     '<div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 110px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 8px;">' +
                     (chipsHtml || '<span style="color: var(--text-dim); font-size: 11px;">Indique claves válidas.</span>') +
@@ -1842,13 +1877,153 @@ def render_bulk_create_modal() -> str:
                 submitBtn.disabled = isBlocked;
                 submitBtn.style.opacity = isBlocked ? '0.45' : '1';
                 submitBtn.style.cursor = isBlocked ? 'not-allowed' : 'pointer';
-                submitBtn.innerHTML = '➕ CREAR LOTE DE ' + countToCreate + ' EJEMPLARES';
+                submitBtn.innerHTML = '➕ CREAR LOTE DE ' + countToCreate.toLocaleString() + ' EJEMPLARES';
             }}
         }}
 
         // Run initial calculation right away
         setTimeout(onBulkInputsChanged, 30);
     </script>
+    """
+
+
+def render_bulk_create_success_modal(
+    created_count: int,
+    created_keys: List[str],
+    conflicts: List[str],
+    species: str,
+    graft: str,
+    aka: str = "",
+    photos_count: int = 0
+) -> str:
+    """Renders an intuitive, crystal-clear completion modal when batch creation finishes."""
+    key_range_str = ""
+    if created_keys:
+        if len(created_keys) == 1:
+            key_range_str = created_keys[0]
+        else:
+            key_range_str = f"{created_keys[0]} ... {created_keys[-1]} ({len(created_keys)} ejemplares)"
+
+    sample_chips = "".join(
+        f'<span style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); color: var(--green-sage); font-family: var(--font-mono); font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 3px;">{k}</span> '
+        for k in created_keys[:30]
+    )
+    if len(created_keys) > 30:
+        sample_chips += f'<span style="color: var(--text-dim); font-size: 11px; align-self: center;">... y {len(created_keys) - 30} más</span>'
+
+    conflicts_banner = ""
+    if conflicts:
+        conflicts_banner = f"""
+        <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 11.5px; color: var(--peach-orange);">
+            ⚠️ <strong>Se omitieron {len(conflicts)} claves existentes</strong> que ya se encontraban en el catálogo.
+        </div>
+        """
+
+    photo_note = ""
+    if photos_count > 0:
+        photo_note = f"""
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--blue-sky); margin-top: 6px;">
+            <span>📸</span>
+            <span>Fotografía compartida procesada una sola vez en memoria y vinculada a los {photos_count} ejemplares del lote.</span>
+        </div>
+        """
+
+    aka_display = f'<span style="color: var(--peach-orange); font-weight: 600;">{html.escape(aka)}</span>' if aka else '<span style="color: var(--text-dim); font-style: italic;">Sin alias</span>'
+
+    return f"""
+    <div class="modal-overlay" id="bulk-plant-success-modal" role="dialog" aria-modal="true" style="display: flex;">
+        <div class="modal-dialog" style="max-width: 680px; width: 95vw; display: flex; flex-direction: column;">
+            
+            <!-- HEADER -->
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="modal-title" style="color: var(--green-sage);">
+                        🌿 [ALTA MASIVA COMPLETADA CON ÉXITO]
+                    </span>
+                </div>
+                <button type="button"
+                        class="modal-close-btn"
+                        hx-get="/modal/close"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Cerrar ventana [ESC]"
+                        aria-label="Cerrar modal">
+                    ✕
+                </button>
+            </div>
+
+            <!-- BODY -->
+            <div class="modal-body" style="padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+                
+                <!-- SUCCESS HIGHLIGHT BOX -->
+                <div style="background: rgba(166, 227, 161, 0.12); border: 1px solid var(--green-sage); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 16px; font-weight: 700; color: var(--green-sage);">
+                            ✓ {created_count} Ejemplares Registrados
+                        </span>
+                        <span style="font-size: 12px; font-family: var(--font-mono); color: var(--text-main); background: var(--bg-surface); padding: 3px 8px; border-radius: 3px; border: 1px solid var(--border-dim);">
+                            {key_range_str}
+                        </span>
+                    </div>
+                    <div style="font-size: 12.5px; color: var(--text-main); line-height: 1.4; margin-top: 4px;">
+                        Los nuevos ejemplares han sido indexados en la base de datos y ya se encuentran visibles en el catálogo general y en las estadísticas.
+                    </div>
+                    {photo_note}
+                    {conflicts_banner}
+                </div>
+
+                <!-- BATCH DETAILS GRID -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+                    <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px 12px;">
+                        <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Especie botánica:</div>
+                        <div style="font-weight: 600; color: var(--text-main); font-style: italic;">{html.escape(species)}</div>
+                    </div>
+                    <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px 12px;">
+                        <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Tipo de cultivo:</div>
+                        <div style="font-weight: 600; color: var(--blue-sky);">{html.escape(graft or 'Semilla + Injerto')}</div>
+                    </div>
+                    <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px 12px; grid-column: span 2;">
+                        <div style="font-size: 10px; color: var(--text-dim); text-transform: uppercase;">Alias botánico asignado:</div>
+                        <div>{aka_display}</div>
+                    </div>
+                </div>
+
+                <!-- KEYS PREVIEW CHIPS -->
+                <div>
+                    <div style="font-size: 11px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px;">
+                        Claves generadas ({created_count}):
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px;">
+                        {sample_chips}
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- FOOTER -->
+            <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button"
+                        class="btn btn-green"
+                        hx-get="/plants/modal/bulk-new"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        style="font-weight: 700;">
+                    ➕ REGISTRAR OTRO LOTE
+                </button>
+
+                <div style="display: flex; gap: 8px;">
+                    <button type="button"
+                            class="btn"
+                            hx-get="/modal/close"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML">
+                        ✕ VER CATÁLOGO Y CERRAR [ESC]
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
     """
 
 
@@ -1989,9 +2164,10 @@ def render_bulk_delete_modal() -> str:
                                            class="form-input"
                                            value="10"
                                            min="1"
+                                           max="10000"
                                            oninput="onBulkDelInputsChanged();" />
                                     <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                        Número final del rango
+                                        Número final del rango (hasta 10.000)
                                     </div>
                                 </div>
 
@@ -2224,22 +2400,38 @@ def render_bulk_delete_modal() -> str:
             var totalPhotos = 0;
             var keysList = [];
             var chipsHtml = '';
+            var maxRender = 60;
+            var hasTruncation = (matched.length > maxRender);
+            var renderList = hasTruncation ? matched.slice(0, 50) : matched;
 
             matched.forEach(function(p) {{
                 totalPhotos += (p.photos_count || 0);
                 keysList.push(p.name);
+            }});
+
+            renderList.forEach(function(p) {{
                 var akaSpan = p.aka ? ' <span style="color: var(--peach-orange);">"' + p.aka + '"</span>' : '';
                 var photoTag = (p.photos_count > 0) ? ' · 📸 ' + p.photos_count : '';
                 chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 3px;" title="' + p.species + '">' +
                     p.name + akaSpan + photoTag + '</span> ';
             }});
 
+            if (hasTruncation) {{
+                chipsHtml += '<span style="color: var(--peach-orange); font-size: 11px; padding: 2px 8px; font-weight: 600; align-self: center;">... y ' + (matched.length - 60).toLocaleString() + ' ejemplares más en el lote ...</span> ';
+                matched.slice(-10).forEach(function(p) {{
+                    var akaSpan = p.aka ? ' <span style="color: var(--peach-orange);">"' + p.aka + '"</span>' : '';
+                    var photoTag = (p.photos_count > 0) ? ' · 📸 ' + p.photos_count : '';
+                    chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 3px;" title="' + p.species + '">' +
+                        p.name + akaSpan + photoTag + '</span> ';
+                }});
+            }}
+
             var keysCsvInput = document.getElementById('bulk-del-keys-csv');
             if (keysCsvInput) keysCsvInput.value = keysList.join(',');
 
             var badgeEl = document.getElementById('del-impact-badge');
             if (badgeEl) {{
-                badgeEl.textContent = matched.length + ' ejemplares identificados · ' + totalPhotos + ' fotos en disco';
+                badgeEl.textContent = matched.length.toLocaleString() + ' ejemplares identificados · ' + totalPhotos.toLocaleString() + ' fotos en disco';
             }}
 
             var container = document.getElementById('bulk-del-preview-container');

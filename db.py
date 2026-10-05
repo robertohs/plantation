@@ -798,7 +798,7 @@ def generate_bulk_keys(
     raw_pfx = (prefix or "").strip()
     clean_pfx = re.sub(r'[^a-zA-Z0-9_-]', '', raw_pfx).upper()
     keys = []
-    count = max(1, min(count, 500))
+    count = max(1, min(count, 10000))
     start_num = max(1, start_num)
     
     pad_mode = 0
@@ -830,7 +830,8 @@ def create_plants_bulk(
     plant_photos_map: Optional[Dict[str, List[str]]] = None
 ) -> Tuple[bool, str, List[str], List[str]]:
     """
-    Creates multiple plant specimens with identical metadata in an atomic SQLite transaction.
+    Creates multiple plant specimens with identical metadata in an atomic, ultra-fast SQLite transaction.
+    Alias is always stored as an exact alias without sequential numbering.
     Returns (success, message, created_keys, skipped_keys).
     """
     species = (common_data.get("species") or "").strip()
@@ -872,6 +873,7 @@ def create_plants_bulk(
     else:
         sow_val = ""
 
+    # Alias is strictly an exact alias without ever appending sequential numbers
     aka_base = (common_data.get("aka") or "").strip()
     location = (common_data.get("location") or "").strip()
     graft = (common_data.get("graft") or "").strip()
@@ -881,31 +883,29 @@ def create_plants_bulk(
     status = normalize_status(common_data.get("status"))
 
     created_keys = []
+    rows_to_insert = []
+    for k in available:
+        photos_for_k = default_photos
+        if plant_photos_map and k in plant_photos_map:
+            photos_for_k = plant_photos_map[k]
+        photos_json = json.dumps(photos_for_k) if isinstance(photos_for_k, list) else "[]"
+
+        rows_to_insert.append((
+            k, species, aka_base, location, height_val, reg_date, padres,
+            sow_val, graft, pruned_val, repotted_val,
+            fertilizante, photos_json, status, comentarios, indxw_val, now, now
+        ))
+        created_keys.append(k)
+
+    # Fast bulk insertion using executemany in a single transaction
     with get_connection() as conn:
-        for idx, k in enumerate(available):
-            if auto_number_alias and aka_base:
-                aka_entry = f"{aka_base} #{idx + 1}"
-            else:
-                aka_entry = aka_base
-
-            # Determine photos for this specific specimen
-            photos_for_k = default_photos
-            if plant_photos_map and k in plant_photos_map:
-                photos_for_k = plant_photos_map[k]
-            photos_json = json.dumps(photos_for_k) if isinstance(photos_for_k, list) else "[]"
-
-            conn.execute("""
-                INSERT INTO plants (
-                    name, species, aka, location, height, registration_date, padres,
-                    sowing_cutting_date, graft, last_pruned, last_repotted,
-                    fertilizante, photos, status, comentarios, indxw, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                k, species, aka_entry, location, height_val, reg_date, padres,
-                sow_val, graft, pruned_val, repotted_val,
-                fertilizante, photos_json, status, comentarios, indxw_val, now, now
-            ))
-            created_keys.append(k)
+        conn.executemany("""
+            INSERT INTO plants (
+                name, species, aka, location, height, registration_date, padres,
+                sowing_cutting_date, graft, last_pruned, last_repotted,
+                fertilizante, photos, status, comentarios, indxw, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows_to_insert)
         conn.commit()
 
     sample_keys = ", ".join(created_keys[:8]) + ("..." if len(created_keys) > 8 else "")
@@ -1005,18 +1005,22 @@ def bulk_delete_plants(keys: List[str]) -> Tuple[int, List[str]]:
     create_pre_bulk_delete_backup()
 
     all_photos: List[str] = []
+    deleted_count = 0
+    chunk_size = 900
     with get_connection() as conn:
-        placeholders = ",".join("?" for _ in clean_keys)
-        cursor = conn.execute(f"SELECT photos FROM plants WHERE name IN ({placeholders})", clean_keys)
-        for row in cursor.fetchall():
-            try:
-                p_list = json.loads(row["photos"]) if row["photos"] else []
-                all_photos.extend(p_list)
-            except Exception:
-                pass
+        for i in range(0, len(clean_keys), chunk_size):
+            chunk = clean_keys[i:i + chunk_size]
+            placeholders = ",".join("?" for _ in chunk)
+            cursor = conn.execute(f"SELECT photos FROM plants WHERE name IN ({placeholders})", chunk)
+            for row in cursor.fetchall():
+                try:
+                    p_list = json.loads(row["photos"]) if row["photos"] else []
+                    all_photos.extend(p_list)
+                except Exception:
+                    pass
 
-        cursor = conn.execute(f"DELETE FROM plants WHERE name IN ({placeholders})", clean_keys)
-        deleted_count = cursor.rowcount
+            cur_del = conn.execute(f"DELETE FROM plants WHERE name IN ({placeholders})", chunk)
+            deleted_count += cur_del.rowcount
         conn.commit()
 
     return deleted_count, all_photos

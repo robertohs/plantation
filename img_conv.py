@@ -131,6 +131,95 @@ def validate_and_save_photo(
                 pass
 
 
+def process_batch_photo(
+    keys: List[str],
+    file_bytes: bytes,
+    original_filename: str = ""
+) -> Tuple[bool, dict, str]:
+    """
+    High-performance batch photo processor for multiple plants:
+    Converts and compresses the source image ONCE into optimized WebP in memory,
+    then writes individual plant files (<KEY>_1.webp) directly from the cached bytes.
+    This avoids re-running expensive PIL decompression, resizing, and WebP compression
+    repeatedly for every plant in the batch, enabling instant generation of up to 10,000 plants.
+    """
+    ensure_images_dir()
+    if not file_bytes:
+        return False, {}, "El archivo de imagen está vacío."
+
+    if len(file_bytes) > MAX_FILE_SIZE:
+        return False, {}, "La imagen supera el límite permitido de 10 MB."
+
+    # 1. Single conversion and optimization pass in RAM
+    img_buffer = None
+    img = None
+    converted_bytes = None
+    ext = "webp"
+    try:
+        img_buffer = io.BytesIO(file_bytes)
+        img = Image.open(img_buffer)
+        img.verify()
+        img_buffer.seek(0)
+        img = Image.open(img_buffer)
+
+        # Normalize colorspace
+        if img.mode in ("RGBA", "LA"):
+            pass
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+
+        # Resize if huge
+        max_dim = 2048
+        if img.width > max_dim or img.height > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+
+        out_io = io.BytesIO()
+        try:
+            img.save(out_io, "WEBP", quality=88)
+            converted_bytes = out_io.getvalue()
+            ext = "webp"
+        except Exception:
+            out_io = io.BytesIO()
+            rgb_img = img.convert("RGB") if img.mode != "RGB" else img
+            rgb_img.save(out_io, "JPEG", quality=90)
+            converted_bytes = out_io.getvalue()
+            ext = "jpg"
+
+    except Exception as e:
+        return False, {}, f"Error al procesar la imagen de lote: {str(e)}"
+    finally:
+        if img is not None:
+            try:
+                img.close()
+            except Exception:
+                pass
+        if img_buffer is not None:
+            try:
+                img_buffer.close()
+            except Exception:
+                pass
+
+    if not converted_bytes:
+        return False, {}, "No se pudieron generar los datos de la imagen optimizada."
+
+    # 2. Fast direct I/O write for each plant key
+    plant_photos_map = {}
+    for k in keys:
+        clean_k = k.strip()
+        if not clean_k:
+            continue
+        fn = f"{clean_k}_1.{ext}"
+        fp = os.path.join(IMAGES_DIR, fn)
+        try:
+            with open(fp, "wb") as f:
+                f.write(converted_bytes)
+            plant_photos_map[clean_k] = [fn]
+        except Exception as e:
+            print(f"[PHOTO] Error writing batch photo for {clean_k}: {e}")
+
+    return True, plant_photos_map, f"Fotografía procesada una sola vez y vinculada a {len(plant_photos_map)} ejemplares."
+
+
 def delete_photo_file(filename: str) -> bool:
     """Removes a single photo file from the Images directory."""
     if not filename:

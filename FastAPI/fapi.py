@@ -16,7 +16,7 @@ from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File, Q
 from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
 
 import db
-from img_conv import validate_and_save_photo, delete_photo_file, cleanup_plant_photos, IMAGES_DIR
+from img_conv import validate_and_save_photo, process_batch_photo, delete_photo_file, cleanup_plant_photos, IMAGES_DIR
 from pdf_gen import generate_catalog_pdf, generate_single_plant_pdf
 from .templates.components import (
     render_card_html,
@@ -30,6 +30,7 @@ from .templates.modals import (
     render_new_plant_modal,
     render_edit_plant_modal,
     render_bulk_create_modal,
+    render_bulk_create_success_modal,
     render_bulk_delete_modal,
     render_bulk_keys_preview,
     render_import_db_modal
@@ -350,9 +351,9 @@ async def bulk_create_plants_submit(
     bulk_photo: Optional[UploadFile] = File(None)
 ):
     """Creates multiple specimens in a batch with shared metadata and validated sequential keys."""
+    clean_count = min(max(int(count), 1), 10000)
     clean_pfx = (prefix or "").strip()
     is_skip = bool(skip_conflicts and str(skip_conflicts).strip() in ("1", "true", "on"))
-    is_auto_alias = bool(auto_number_alias and str(auto_number_alias).strip() in ("1", "true", "on"))
 
     # Generate or parse candidate keys
     if key_mode == "manual" and manual_keys.strip():
@@ -371,6 +372,7 @@ async def bulk_create_plants_submit(
                     </div>
                 </div>
             """)
+        keys = keys[:10000]
     else:
         if not clean_pfx:
             return HTMLResponse("""
@@ -385,7 +387,7 @@ async def bulk_create_plants_submit(
             pad_mode_val = int(pad_zeros) if pad_zeros is not None else 2
         except (ValueError, TypeError):
             pad_mode_val = 2
-        keys = db.generate_bulk_keys(clean_pfx, count, start_num, pad_mode_val)
+        keys = db.generate_bulk_keys(clean_pfx, clean_count, start_num, pad_mode_val)
         if not keys:
             return HTMLResponse("""
                 <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
@@ -425,6 +427,8 @@ async def bulk_create_plants_submit(
         if dt_sow:
             clean_sow = dt_sow.strftime("%Y-%m-%d")
 
+    clean_graft = (graft or "").strip() or "Semilla + Injerto"
+
     common_data = {
         "species": species.strip(),
         "aka": aka.strip(),
@@ -433,7 +437,7 @@ async def bulk_create_plants_submit(
         "height": height.strip(),
         "registration_date": datetime.now().strftime("%Y-%m-%d"),
         "sowing_cutting_date": clean_sow,
-        "graft": graft.strip(),
+        "graft": clean_graft,
         "padres": db.combine_parents(p1, p2),
         "fertilizante": fertilizante.strip(),
         "comentarios": comentarios.strip(),
@@ -441,21 +445,20 @@ async def bulk_create_plants_submit(
         "photos": []
     }
 
-    # Handle batch photo assignment per individual plant
+    # Fast single-pass batch photo optimization:
+    # Converts image once in memory into WebP bytes, then writes disk files instantly
     plant_photos_map = {}
     if bulk_photo and bulk_photo.filename:
         file_bytes = await bulk_photo.read()
         if file_bytes and len(file_bytes) > 0:
-            for k in keys:
-                ok, saved_fn, _ = validate_and_save_photo(k, file_bytes, bulk_photo.filename)
-                if ok and saved_fn:
-                    plant_photos_map[k] = [saved_fn]
+            ok_photo, p_map, _ = process_batch_photo(keys, file_bytes, bulk_photo.filename)
+            if ok_photo:
+                plant_photos_map = p_map
 
     success, msg, created, conflicts = db.create_plants_bulk(
         keys,
         common_data,
         skip_existing=is_skip,
-        auto_number_alias=is_auto_alias,
         plant_photos_map=plant_photos_map
     )
 
@@ -468,19 +471,27 @@ async def bulk_create_plants_submit(
             </div>
         """)
 
+    # Background updates for grids and admin dashboards
     plants = db.get_plants()
-    plants_grid = render_plants_grid(plants)
+    plants_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
-    close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
-    
-    toast_banner = f"""
-    <div id="bulk-toast-banner" style="background: rgba(34, 197, 94, 0.15); border: 1px solid var(--green-sage); border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; color: var(--green-sage); font-size: 13px; font-weight: 600;">
-        <span>🌿 <strong>¡Registro masivo completado con éxito!</strong> {html.escape(msg)}</span>
-        <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--green-sage); font-weight: bold; cursor: pointer; font-size: 16px;">✕</button>
-    </div>
-    """
 
-    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob)
+    inv = db.get_inventory_stats()
+    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
+    oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
+
+    # Clear, intuitive, satisfying success modal
+    success_modal = render_bulk_create_success_modal(
+        created_count=len(created),
+        created_keys=created,
+        conflicts=conflicts,
+        species=species.strip(),
+        graft=clean_graft,
+        aka=aka.strip(),
+        photos_count=len(plant_photos_map)
+    )
+
+    return HTMLResponse(success_modal + plants_grid + stats_bar + oob_admin_stats + oob_admin_table)
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
