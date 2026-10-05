@@ -97,6 +97,6 @@ Thumbs.db
 
 db/
 images/
-!images/images.py
+!images/imgs.py
 
 
