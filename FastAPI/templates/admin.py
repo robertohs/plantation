@@ -195,18 +195,14 @@ def render_admin_panel_content(filter_tag: str = "ALL") -> str:
                    title="Exportar inventario estructurado a archivo CSV">
                     ⭳ [EXPORTAR CSV]
                 </a>
-                <a class="btn btn-sm btn-green"
-                   href="/admin/backup.db"
-                   download
-                   title="Descargar copia de seguridad instantánea de la base de datos SQLite (.db)">
-                    💾 [BACKUP DB]
-                </a>
-                <a class="btn btn-sm btn-primary"
-                   href="/admin/archive.zip"
-                   download
-                   title="Descargar archivo completo (.zip) con la base de datos y todas las fotografías">
-                    📦 [ARCHIVO COMPLETO .ZIP]
-                </a>
+                <button type="button"
+                        class="btn btn-sm btn-green"
+                        hx-get="/plants/modal/bulk-new"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Añadir múltiples ejemplares simultáneamente con datos comunes y claves secuenciales">
+                    ➕ [ALTA MASIVA DE PLANTAS]
+                </button>
             </div>
         </div>
 

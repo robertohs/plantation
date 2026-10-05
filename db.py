@@ -722,6 +722,134 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     return True, key
 
 
+def check_keys_availability(keys: List[str]) -> Tuple[List[str], List[str]]:
+    """
+    Checks a list of proposed keys against the SQLite database.
+    Case-insensitive matching to guarantee no duplicates.
+    Returns (available_keys, conflict_keys).
+    """
+    if not keys:
+        return [], []
+    with get_connection() as conn:
+        existing = set(r[0].lower() for r in conn.execute("SELECT LOWER(name) FROM plants").fetchall())
+
+    available = []
+    conflicts = []
+    seen = set()
+    for k in keys:
+        ck = clean_key(k)
+        if not ck:
+            continue
+        lower_ck = ck.lower()
+        if lower_ck in seen:
+            # Internal duplication in input list
+            conflicts.append(ck)
+            continue
+        seen.add(lower_ck)
+        if lower_ck in existing:
+            conflicts.append(ck)
+        else:
+            available.append(ck)
+    return available, conflicts
+
+
+def generate_bulk_keys(prefix: str, count: int, start_num: int = 1, pad_zeros: bool = False) -> List[str]:
+    """Generates sequential keys: e.g. prefix='k', count=10, start=1 -> ['k1', 'k2', ... 'k10']."""
+    clean_pfx = clean_key(prefix) if prefix else ""
+    keys = []
+    count = max(1, min(count, 500))
+    start_num = max(1, start_num)
+    for i in range(start_num, start_num + count):
+        num_str = str(i).zfill(2) if pad_zeros and (start_num + count) > 9 else str(i)
+        keys.append(f"{clean_pfx}{num_str}")
+    return keys
+
+
+def create_plants_bulk(
+    keys: List[str],
+    common_data: Dict[str, Any],
+    skip_existing: bool = True
+) -> Tuple[bool, str, List[str], List[str]]:
+    """
+    Creates multiple plant specimens with identical metadata in an atomic SQLite transaction.
+    Returns (success, message, created_keys, skipped_keys).
+    """
+    species = (common_data.get("species") or "").strip()
+    if not species:
+        return False, "La especie botánica o taxonomía es obligatoria para el lote.", [], []
+
+    available, conflicts = check_keys_availability(keys)
+
+    if conflicts and not skip_existing:
+        conflict_list = ", ".join(conflicts[:10]) + ("..." if len(conflicts) > 10 else "")
+        return False, f"Las siguientes claves ya existen en la base de datos: {conflict_list}. Marque la opción de omitir existentes o cambie el prefijo/rango.", [], conflicts
+
+    if not available:
+        return False, "Todas las claves generadas ya existen en la base de datos. Ningún ejemplar fue creado.", [], conflicts
+
+    photos = common_data.get("photos", [])
+    photos_json = json.dumps(photos) if isinstance(photos, list) else "[]"
+    reg_date = (common_data.get("registration_date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    indxw_raw = common_data.get("indxw", 0)
+    try:
+        indxw_val = int(indxw_raw)
+    except (ValueError, TypeError):
+        indxw_val = 1 if str(indxw_raw).strip() in ("1", "true", "True", "on") else 0
+
+    raw_height = (common_data.get("height") or "").strip()
+    height_val = format_height_entry(raw_height, force_date=True)
+
+    raw_pruned = (common_data.get("last_pruned") or "").strip()
+    pruned_val = format_care_entry(raw_pruned, force_date=True) if raw_pruned else ""
+
+    raw_repotted = (common_data.get("last_repotted") or "").strip()
+    repotted_val = format_care_entry(raw_repotted, force_date=True) if raw_repotted else ""
+
+    raw_sow = (common_data.get("sowing_cutting_date") or "").strip()
+    if raw_sow:
+        dt_sow = parse_plant_date(raw_sow)
+        sow_val = dt_sow.strftime("%Y-%m-%d") if dt_sow else raw_sow
+    else:
+        sow_val = ""
+
+    aka_base = (common_data.get("aka") or "").strip()
+    location = (common_data.get("location") or "").strip()
+    graft = (common_data.get("graft") or "").strip()
+    padres = (common_data.get("padres") or "").strip()
+    fertilizante = (common_data.get("fertilizante") or "").strip()
+    comentarios = (common_data.get("comentarios") or "").strip()
+    status = normalize_status(common_data.get("status"))
+
+    created_keys = []
+    with get_connection() as conn:
+        for idx, k in enumerate(available):
+            # Optional auto-numbering on alias if requested
+            aka_entry = aka_base
+
+            conn.execute("""
+                INSERT INTO plants (
+                    name, species, aka, location, height, registration_date, padres,
+                    sowing_cutting_date, graft, last_pruned, last_repotted,
+                    fertilizante, photos, status, comentarios, indxw, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                k, species, aka_entry, location, height_val, reg_date, padres,
+                sow_val, graft, pruned_val, repotted_val,
+                fertilizante, photos_json, status, comentarios, indxw_val, now, now
+            ))
+            created_keys.append(k)
+        conn.commit()
+
+    sample_keys = ", ".join(created_keys[:8]) + ("..." if len(created_keys) > 8 else "")
+    msg = f"Se han creado exitosamente {len(created_keys)} ejemplares ({sample_keys})."
+    if conflicts:
+        msg += f" (Se omitieron {len(conflicts)} claves existentes)."
+
+    return True, msg, created_keys, conflicts
+
+
 def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
     """Updates an existing plant record."""
     key = clean_key(name)

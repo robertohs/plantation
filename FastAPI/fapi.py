@@ -26,7 +26,9 @@ from .templates.components import (
 from .templates.modals import (
     render_view_plant_modal_content,
     render_new_plant_modal,
-    render_edit_plant_modal
+    render_edit_plant_modal,
+    render_bulk_create_modal,
+    render_bulk_keys_preview
 )
 from .templates.admin import render_admin_panel_content
 from .templates.layout import render_index_html
@@ -225,6 +227,154 @@ def validate_parent_key_endpoint(
 def new_plant_modal():
     """Renders New Plant registration modal."""
     return HTMLResponse(render_new_plant_modal())
+
+
+@router.get("/plants/modal/bulk-new", response_class=HTMLResponse)
+def bulk_new_plant_modal():
+    """Renders the batch specimen creation modal."""
+    return HTMLResponse(render_bulk_create_modal())
+
+
+@router.get("/plants/validate-bulk-keys", response_class=HTMLResponse)
+def validate_bulk_keys_endpoint(
+    prefix: str = Query("k"),
+    count: int = Query(10),
+    start_num: int = Query(1),
+    pad_zeros: Optional[str] = Query(None),
+    skip_conflicts: Optional[str] = Query(None)
+):
+    """Real-time validation endpoint for sequential key generation."""
+    clean_pfx = (prefix or "").strip()
+    is_pad = bool(pad_zeros and pad_zeros.strip() in ("1", "true", "on"))
+    is_skip = bool(skip_conflicts and skip_conflicts.strip() in ("1", "true", "on"))
+    return HTMLResponse(render_bulk_keys_preview(
+        prefix=clean_pfx,
+        count=count,
+        start_num=start_num,
+        pad_zeros=is_pad,
+        skip_conflicts=is_skip
+    ))
+
+
+@router.post("/plants/bulk-create", response_class=HTMLResponse)
+async def bulk_create_plants_submit(
+    request: Request,
+    prefix: str = Form("k"),
+    count: int = Form(10),
+    start_num: int = Form(1),
+    pad_zeros: Optional[str] = Form(None),
+    skip_conflicts: Optional[str] = Form(None),
+    species: str = Form(...),
+    aka: str = Form(""),
+    location: str = Form(""),
+    status: str = Form("OK"),
+    height: str = Form(""),
+    sowing_cutting_date: str = Form(""),
+    graft: str = Form(""),
+    padre1: Optional[str] = Form(None),
+    padre2: Optional[str] = Form(None),
+    fertilizante: str = Form(""),
+    comentarios: str = Form(""),
+    bulk_photo: Optional[UploadFile] = File(None)
+):
+    """Creates multiple specimens in a batch with shared metadata and validated sequential keys."""
+    clean_pfx = (prefix or "").strip()
+    if not clean_pfx:
+        return HTMLResponse("""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                    ✕ El prefijo o código clave no puede estar vacío.
+                </div>
+            </div>
+        """)
+
+    is_pad = bool(pad_zeros and pad_zeros.strip() in ("1", "true", "on"))
+    is_skip = bool(skip_conflicts and skip_conflicts.strip() in ("1", "true", "on"))
+
+    # Generate candidate key list
+    keys = db.generate_bulk_keys(clean_pfx, count, start_num, is_pad)
+    if not keys:
+        return HTMLResponse("""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                    ✕ No se generaron claves válidas. Verifique el prefijo y cantidad.
+                </div>
+            </div>
+        """)
+
+    # Validate parent keys
+    all_keys = db.get_all_keys()
+    all_keys_set = set(k.strip().lower() for k in all_keys)
+    p1 = (padre1 or "").strip()
+    p2 = (padre2 or "").strip()
+
+    if p1 and p1.lower() not in ("unknown", "desconocido") and p1.lower() not in all_keys_set:
+        return HTMLResponse(f"""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                    ✕ El Progenitor 1 '{html.escape(p1)}' no existe en la base de datos.
+                </div>
+            </div>
+        """)
+
+    if p2 and p2.lower() not in ("unknown", "desconocido") and p2.lower() not in all_keys_set:
+        return HTMLResponse(f"""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                    ✕ El Progenitor 2 '{html.escape(p2)}' no existe en la base de datos.
+                </div>
+            </div>
+        """)
+
+    # Process optional shared photo
+    saved_photos = []
+    if bulk_photo and bulk_photo.filename:
+        file_bytes = await bulk_photo.read()
+        if file_bytes and len(file_bytes) > 0:
+            ok, saved_fn, _ = validate_and_save_photo(clean_pfx, file_bytes, bulk_photo.filename)
+            if ok and saved_fn:
+                saved_photos.append(saved_fn)
+
+    clean_sow = (sowing_cutting_date or "").strip()
+    if clean_sow:
+        dt_sow = db.parse_plant_date(clean_sow)
+        if dt_sow:
+            clean_sow = dt_sow.strftime("%Y-%m-%d")
+
+    common_data = {
+        "species": species.strip(),
+        "aka": aka.strip(),
+        "location": location.strip(),
+        "status": status.strip() or "OK",
+        "height": height.strip(),
+        "registration_date": datetime.now().strftime("%Y-%m-%d"),
+        "sowing_cutting_date": clean_sow,
+        "graft": graft.strip(),
+        "padres": db.combine_parents(p1, p2),
+        "fertilizante": fertilizante.strip(),
+        "comentarios": comentarios.strip(),
+        "indxw": 0,
+        "photos": saved_photos
+    }
+
+    success, msg, created, conflicts = db.create_plants_bulk(keys, common_data, skip_existing=is_skip)
+
+    if not success:
+        return HTMLResponse(f"""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                    ✕ {html.escape(msg)}
+                </div>
+            </div>
+        """)
+
+    plants = db.get_plants()
+    plants_grid = render_plants_grid(plants)
+    stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+    close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
+    admin_oob = get_oob_admin(request)
+
+    return HTMLResponse(plants_grid + stats_bar + close_modal_oob + admin_oob)
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
@@ -747,8 +897,8 @@ def download_single_plant_pdf(name: str):
 def download_full_catalog_pdf():
     """Creates complete PDF dossier with index summary and all specimen cards."""
     plants = db.get_plants()
-    pdf_bytes = generate_catalog_pdf(plants, title="CATÁLOGO GENERAL DE EJEMPLARES")
-    filename = "Plantation_Catalogo_General.pdf"
+    pdf_bytes = generate_catalog_pdf(plants, title="DOSSIER GENERAL DE EJEMPLARES")
+    filename = "Plantation_Dossier_General.pdf"
 
     return Response(
         content=pdf_bytes,

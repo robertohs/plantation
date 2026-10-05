@@ -1204,3 +1204,409 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
         }}
     </script>
     """
+
+
+def render_bulk_keys_preview(
+    prefix: str = "k",
+    count: int = 10,
+    start_num: int = 1,
+    pad_zeros: bool = False,
+    skip_conflicts: bool = True
+) -> str:
+    """Renders the real-time visual preview and validation badges for batch key generation."""
+    keys = db.generate_bulk_keys(prefix, count, start_num, pad_zeros)
+    avail, conf = db.check_keys_availability(keys)
+
+    total_k = len(keys)
+    avail_count = len(avail)
+    conf_count = len(conf)
+
+    # Banner message
+    if conf_count == 0:
+        banner = f"""
+        <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px;">✓</span>
+            <div><strong>{total_k} claves disponibles:</strong> Ninguna clave existe previamente en la base de datos. Todas listas para registro.</div>
+        </div>
+        """
+    else:
+        conf_samples = ", ".join(conf[:8]) + ("..." if len(conf) > 8 else "")
+        if skip_conflicts:
+            banner = f"""
+            <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 14px;">⚠️</span>
+                <div>
+                    <strong>{conf_count} clave{'s' if conf_count > 1 else ''} ya existe{'n' if conf_count > 1 else ''} en la BD:</strong> {html.escape(conf_samples)}.<br />
+                    <span style="color: var(--text-main);">Se registrarán <strong>{avail_count} nuevos ejemplares</strong> (omitiendo las ya existentes).</span>
+                </div>
+            </div>
+            """
+        else:
+            banner = f"""
+            <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 14px;">✕</span>
+                <div>
+                    <strong>CONFLICTO DE CLAVES DUPLICADAS:</strong> Las claves <strong>{html.escape(conf_samples)}</strong> ya están en uso.<br />
+                    <span>Active la casilla "Omitir existentes" o cambie el código/rango inicial.</span>
+                </div>
+            </div>
+            """
+
+    # Badge chips for every generated key
+    chips = []
+    conf_set = set(k.lower() for k in conf)
+    for k in keys:
+        if k.lower() in conf_set:
+            chips.append(f"""
+            <span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; text-decoration: line-through;" title="Ya existe en la base de datos">
+                {html.escape(k)} ✕
+            </span>
+            """)
+        else:
+            chips.append(f"""
+            <span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); color: var(--green-sage); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px;" title="Disponible para registro">
+                {html.escape(k)} ✓
+            </span>
+            """)
+
+    chips_html = "".join(chips)
+    if not chips:
+        chips_html = '<span style="color: var(--text-dim); font-size: 11px;">Indique un prefijo y cantidad válida.</span>'
+
+    submit_disabled = "disabled" if (avail_count == 0 or (conf_count > 0 and not skip_conflicts)) else ""
+
+    return f"""
+    {banner}
+    <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+        <span>SECUENCIA RESULTANTE ({total_k} CLAVES GENERADAS):</span>
+        <span style="color: var(--text-main); font-weight: 700;">{avail_count} DISPONIBLES · {conf_count} EN USO</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 8px;">
+        {chips_html}
+    </div>
+    <script>
+        (function() {{
+            var btn = document.getElementById('bulk-submit-btn');
+            if (btn) {{
+                btn.disabled = {'true' if submit_disabled else 'false'};
+                btn.style.opacity = {'0.5' if submit_disabled else '1'};
+                btn.style.cursor = {'not-allowed' if submit_disabled else 'pointer'};
+                btn.textContent = '➕ CREAR LOTE DE {avail_count} EJEMPLARES';
+            }}
+        }})();
+    </script>
+    """
+
+
+def render_bulk_create_modal() -> str:
+    """Renders the comprehensive Bulk Specimen Creation modal."""
+    now_str = datetime.now().strftime("%Y-%m-%d")
+    initial_preview = render_bulk_keys_preview(prefix="k", count=10, start_num=1, pad_zeros=False, skip_conflicts=True)
+
+    # Parent datalist
+    plants_list = db.get_plants()
+    datalist_items = []
+    for p in plants_list:
+        p_name = html.escape(str(p.get("name", "")))
+        p_spec = html.escape(str(p.get("species", "")))
+        p_aka = f" ({html.escape(str(p.get('aka')))})" if p.get("aka") else ""
+        datalist_items.append(f'<option value="{p_name}">{p_name} — {p_spec}{p_aka}</option>')
+    keys_datalist = "".join(datalist_items)
+
+    return f"""
+    <div class="modal-overlay" id="bulk-plant-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
+        <div class="modal-card" style="max-width: 900px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <div>
+                    <span class="modal-title" id="bulk-modal-title">
+                        [ PLANTATION ] ALTA MASIVA DE EJEMPLARES (BATCH ADD)
+                    </span>
+                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 3px;">
+                        Creación simultánea de múltiples ejemplares botánicos con taxonomía y cuidados compartidos.
+                    </div>
+                </div>
+                <button type="button"
+                        class="btn-close"
+                        onclick="document.getElementById('modal-container').innerHTML = '';"
+                        aria-label="Cerrar modal">
+                    ✕ ESC
+                </button>
+            </div>
+
+            <form id="bulk-plant-form"
+                  hx-post="/plants/bulk-create"
+                  hx-target="#plant-grid"
+                  hx-swap="innerHTML"
+                  enctype="multipart/form-data"
+                  style="display: flex; flex-direction: column; gap: 16px;">
+
+                <!-- 1. KEY GENERATOR PANEL -->
+                <div style="background: var(--bg-mantle); border: 2px solid var(--green-sage); border-radius: 6px; padding: 14px 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px;">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--green-sage); letter-spacing: 0.5px;">
+                            ⚙ GENERADOR SECUENCIAL DE CLAVES / IDENTIFICADORES
+                        </span>
+                        <span style="font-size: 10.5px; color: var(--text-dim);">
+                            Comprobación automática contra registros existentes en BD
+                        </span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 2fr 1.5fr 1.5fr; gap: 12px; margin-bottom: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="bulk-prefix" style="color: var(--text-main);">
+                                PREFIJO / CÓDIGO CLAVE *
+                            </label>
+                            <input type="text"
+                                   id="bulk-prefix"
+                                   name="prefix"
+                                   class="form-input"
+                                   value="k"
+                                   placeholder="Ej: k, A, OB-, 2026-"
+                                   required
+                                   maxlength="15"
+                                   pattern="[A-Za-z0-9_-]+"
+                                   autocomplete="off"
+                                   hx-get="/plants/validate-bulk-keys"
+                                   hx-trigger="input changed delay:150ms, change"
+                                   hx-include="#bulk-plant-form"
+                                   hx-target="#bulk-keys-preview-container"
+                                   hx-swap="innerHTML" />
+                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                Código que antecede al número (ej: <code>k</code> -> <code>k1, k2...</code>)
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="bulk-count" style="color: var(--text-main);">
+                                CANTIDAD A AÑADIR (x) *
+                            </label>
+                            <input type="number"
+                                   id="bulk-count"
+                                   name="count"
+                                   class="form-input"
+                                   value="10"
+                                   min="1"
+                                   max="200"
+                                   required
+                                   hx-get="/plants/validate-bulk-keys"
+                                   hx-trigger="input changed delay:150ms, change"
+                                   hx-include="#bulk-plant-form"
+                                   hx-target="#bulk-keys-preview-container"
+                                   hx-swap="innerHTML" />
+                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                Total de ejemplares en el lote
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="bulk-start" style="color: var(--text-main);">
+                                NÚMERO INICIAL
+                            </label>
+                            <input type="number"
+                                   id="bulk-start"
+                                   name="start_num"
+                                   class="form-input"
+                                   value="1"
+                                   min="1"
+                                   required
+                                   hx-get="/plants/validate-bulk-keys"
+                                   hx-trigger="input changed delay:150ms, change"
+                                   hx-include="#bulk-plant-form"
+                                   hx-target="#bulk-keys-preview-container"
+                                   hx-swap="innerHTML" />
+                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                Primer número de la secuencia
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 12px; font-size: 11.5px; color: var(--text-sub);">
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                            <input type="checkbox"
+                                   id="bulk-pad-zeros"
+                                   name="pad_zeros"
+                                   value="1"
+                                   hx-get="/plants/validate-bulk-keys"
+                                   hx-trigger="change"
+                                   hx-include="#bulk-plant-form"
+                                   hx-target="#bulk-keys-preview-container"
+                                   hx-swap="innerHTML" />
+                            <span>Rellenar con ceros (ej: <code>k01, k02...</code>)</span>
+                        </label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--peach-orange);">
+                            <input type="checkbox"
+                                   id="bulk-skip-conflicts"
+                                   name="skip_conflicts"
+                                   value="1"
+                                   checked
+                                   hx-get="/plants/validate-bulk-keys"
+                                   hx-trigger="change"
+                                   hx-include="#bulk-plant-form"
+                                   hx-target="#bulk-keys-preview-container"
+                                   hx-swap="innerHTML" />
+                            <span>Omitir claves que ya existan en la BD (crear solo las disponibles)</span>
+                        </label>
+                    </div>
+
+                    <!-- Live Validation Container -->
+                    <div id="bulk-keys-preview-container">
+                        {initial_preview}
+                    </div>
+                </div>
+
+                <!-- 2. COMMON METADATA ACCORDION / FORM -->
+                <datalist id="existing-plant-keys">
+                    {keys_datalist}
+                </datalist>
+
+                <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
+                    <div style="font-size: 12px; font-weight: 700; color: var(--blue-sky); margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px;">
+                        🌱 DATOS Y CONDICIONES COMUNES PARA TODOS LOS EJEMPLARES
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-species">ESPECIE BOTÁNICA / TAXONOMÍA *</label>
+                            <input type="text"
+                                   id="bulk-species"
+                                   name="species"
+                                   class="form-input"
+                                   value="Adenium obesum"
+                                   placeholder="Ej: Ariocarpus retusus, Adenium obesum"
+                                   required
+                                   autocomplete="off" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-aka">ALIAS BASE (OPCIONAL)</label>
+                            <input type="text"
+                                   id="bulk-aka"
+                                   name="aka"
+                                   class="form-input"
+                                   placeholder="Ej: Lote Semillero, Clon V, Ocaso"
+                                   autocomplete="off" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-location">UBICACIÓN / BANCO / ESTANTE</label>
+                            <input type="text"
+                                   id="bulk-location"
+                                   name="location"
+                                   class="form-input"
+                                   placeholder="Ej: Invernadero A - Banco 1"
+                                   autocomplete="off" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">ESTADO SANITARIO & VIGOR *</label>
+                            <div class="status-radio-group">
+                                <label class="status-radio-label">
+                                    <input type="radio" name="status" value="OK" checked />
+                                    <span class="status-badge status-OK" style="font-size: 11px;">● OK</span>
+                                </label>
+                                <label class="status-radio-label">
+                                    <input type="radio" name="status" value="notOK" />
+                                    <span class="status-badge status-notOK" style="font-size: 11px;">● notOK</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-sow">FECHA SIEMBRA / ESQUEJE</label>
+                            <input type="date"
+                                   id="bulk-sow"
+                                   name="sowing_cutting_date"
+                                   class="form-input"
+                                   value="{now_str}" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-height">ALTURA INICIAL REGISTRADA</label>
+                            <input type="text"
+                                   id="bulk-height"
+                                   name="height"
+                                   class="form-input"
+                                   value="0 cm ({now_str})"
+                                   placeholder="Ej: 5 cm ({now_str})" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bulk-graft">TIPO DE CULTIVO / INJERTO</label>
+                            <input type="text"
+                                   id="bulk-graft"
+                                   name="graft"
+                                   class="form-input"
+                                   value="Pie franco"
+                                   placeholder="Ej: Pie franco, Hylocereus" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">PROGENITORES (LINAJE / PADRES)</label>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <input type="text"
+                                       id="bulk-padre1"
+                                       name="padre1"
+                                       class="form-input"
+                                       list="existing-plant-keys"
+                                       placeholder="Madre (o unknown)" />
+                                <input type="text"
+                                       id="bulk-padre2"
+                                       name="padre2"
+                                       class="form-input"
+                                       list="existing-plant-keys"
+                                       placeholder="Padre (o unknown)" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="bulk-fert">FERTILIZACIÓN & TRATAMIENTOS</label>
+                            <textarea id="bulk-fert"
+                                      name="fertilizante"
+                                      class="form-textarea"
+                                      style="height: 55px;"
+                                      placeholder="Pauta de abono compartida para el lote..."></textarea>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="bulk-comm">OBSERVACIONES & NOTAS</label>
+                            <textarea id="bulk-comm"
+                                      name="comentarios"
+                                      class="form-textarea"
+                                      style="height: 55px;"
+                                      placeholder="Notas del lote o semillero..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
+                        <label class="form-label" for="bulk-photo">FOTOGRAFÍA COMPARTIDA PARA EL LOTE (OPCIONAL)</label>
+                        <input type="file"
+                               id="bulk-photo"
+                               name="bulk_photo"
+                               class="form-input"
+                               accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" />
+                        <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                            Si selecciona una imagen, se asignará automáticamente como fotografía inicial de todos los ejemplares creados.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. FOOTER ACTIONS -->
+                <div class="modal-actions" style="margin-top: 4px;">
+                    <button type="button"
+                            class="btn"
+                            onclick="document.getElementById('modal-container').innerHTML = '';">
+                        CANCELAR
+                    </button>
+                    <button type="submit"
+                            id="bulk-submit-btn"
+                            class="btn btn-green"
+                            style="font-weight: 700; padding: 8px 20px;">
+                        ➕ CREAR LOTE DE 10 EJEMPLARES
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    """
+

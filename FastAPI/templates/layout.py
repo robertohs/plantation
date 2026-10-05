@@ -223,6 +223,30 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             var cur = parseInt(box.getAttribute('data-current') || '0', 10);
             goToDossierSlide(cur + delta);
         }}
+
+        function toggleAdminPanel(e) {{
+            if (e && e.preventDefault) e.preventDefault();
+            var panel = document.getElementById('admin-panel');
+            var container = document.getElementById('admin-container');
+            if (!container) return;
+            if (panel) {{
+                if (window.htmx) {{
+                    htmx.ajax('GET', '/admin/close', {{ target: '#admin-container', swap: 'innerHTML' }});
+                }} else {{
+                    fetch('/admin/close').then(function() {{ container.innerHTML = ''; }});
+                }}
+            }} else {{
+                if (window.htmx) {{
+                    htmx.ajax('GET', '/admin', {{ target: '#admin-container', swap: 'innerHTML' }});
+                }} else {{
+                    fetch('/admin').then(function(r) {{ return r.text(); }}).then(function(html) {{ container.innerHTML = html; }});
+                }}
+                setTimeout(function() {{
+                    var p = document.getElementById('admin-panel');
+                    if (p) p.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                }}, 150);
+            }}
+        }}
     </script>
 </head>
 <body>
@@ -244,15 +268,13 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 <span style="font-size: 16px; font-weight: bold; line-height: 1; display: inline-flex; align-items: center; justify-content: center;">+</span>
             </button>
             <div id="admin-nav-slot">
-                <button class="btn"
+                <button type="button"
+                        class="btn"
                         id="admin-nav-btn"
-                        hx-get="/admin/toggle"
-                        hx-vals='js:{{is_open: document.getElementById("admin-panel") !== null}}'
-                        hx-target="#admin-container"
-                        hx-swap="innerHTML"
-                        title="Administración"
-                        aria-label="Administración">
-                    <span style="font-size: 15px; line-height: 1; display: inline-flex; align-items: center; justify-content: center;">⚙</span>
+                        onclick="toggleAdminPanel(event)"
+                        title="Panel de Administración e Inventario"
+                        aria-label="Panel de Administración">
+                    <span style="font-size: 12px; font-weight: 700; line-height: 1; display: inline-flex; align-items: center; gap: 4px;">⚙ ADMIN</span>
                 </button>
             </div>
             <button class="btn"
@@ -282,9 +304,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         </div>
     </header>
 
-    <div id="admin-container"></div>
-
     <main class="app-layout">
+        <div id="admin-container"></div>
         <div class="control-toolbar">
             <div class="search-line">
                 <span class="input-prompt">Buscar&gt;</span>
