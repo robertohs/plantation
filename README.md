@@ -3,4 +3,4 @@
 
 vived plant log--
 
-DO NOT USE JS/TS
+DO NOT USE Custom JS/TS, we are only using htmx
