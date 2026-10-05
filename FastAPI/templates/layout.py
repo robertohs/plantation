@@ -39,7 +39,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plantation - Registro Botánico & Dossier PDF</title>
     <meta name="description" content="Gestor botánico y dossiers técnicos con SQLite, HTMX y exportación PDF." />
-    <link rel="stylesheet" href="/static/style.css?v=20260930_4" />
+    <link rel="stylesheet" href="/static/style.css?v=20261004_1" />
     <script src="/static/htmx.min.js"></script>
     <script>
         (function() {{
@@ -165,6 +165,63 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         function clearParentsInputs() {{
             clearSingleParent(1);
             clearSingleParent(2);
+        }}
+
+        function goToCardSlide(plantName, targetIdx) {{
+            var box = document.getElementById('carousel-' + plantName);
+            if (!box) return;
+            var total = parseInt(box.getAttribute('data-total') || '1', 10);
+            if (total <= 1) return;
+            var idx = ((targetIdx % total) + total) % total;
+            box.setAttribute('data-current', String(idx));
+
+            var slides = box.querySelectorAll('.carousel-slide');
+            slides.forEach(function(s, i) {{
+                s.classList.toggle('active', i === idx);
+            }});
+
+            var dots = box.querySelectorAll('.carousel-dot');
+            dots.forEach(function(d, i) {{
+                d.classList.toggle('active', i === idx);
+            }});
+
+            var badge = document.getElementById('carousel-badge-' + plantName);
+            if (badge) {{
+                badge.textContent = (idx + 1) + '/' + total + ' FOTOS';
+            }}
+        }}
+
+        function stepCardSlide(plantName, delta) {{
+            var box = document.getElementById('carousel-' + plantName);
+            if (!box) return;
+            var cur = parseInt(box.getAttribute('data-current') || '0', 10);
+            goToCardSlide(plantName, cur + delta);
+        }}
+
+        function goToDossierSlide(targetIdx) {{
+            var box = document.getElementById('dossier-carousel');
+            if (!box) return;
+            var total = parseInt(box.getAttribute('data-total') || '1', 10);
+            if (total <= 1) return;
+            var idx = ((targetIdx % total) + total) % total;
+            box.setAttribute('data-current', String(idx));
+
+            var slides = box.querySelectorAll('.dossier-carousel-slide');
+            slides.forEach(function(s, i) {{
+                s.classList.toggle('active', i === idx);
+            }});
+
+            var dots = box.querySelectorAll('.dossier-carousel-dot');
+            dots.forEach(function(d, i) {{
+                d.classList.toggle('active', i === idx);
+            }});
+        }}
+
+        function stepDossierSlide(delta) {{
+            var box = document.getElementById('dossier-carousel');
+            if (!box) return;
+            var cur = parseInt(box.getAttribute('data-current') || '0', 10);
+            goToDossierSlide(cur + delta);
         }}
     </script>
 </head>
@@ -304,7 +361,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 <div class="filter-divider"></div>
 
                 <div class="filter-group">
-                    <span class="filter-label">ALTURA:</span>
+                    <span class="filter-label">ALTURA (cm):</span>
                     <button type="button"
                             class="status-pill height-filter-btn active"
                             onclick="applyPlantFilter('height', 'ALL', this)">
@@ -313,17 +370,17 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                     <button type="button"
                             class="status-pill status-pill-height height-filter-btn"
                             onclick="applyPlantFilter('height', 'less_15', this)">
-                        &lt; 15 cm
+                        &lt; 15
                     </button>
                     <button type="button"
                             class="status-pill status-pill-height height-filter-btn"
                             onclick="applyPlantFilter('height', '15_to_35', this)">
-                        15 - 35 cm
+                        15 - 35
                     </button>
                     <button type="button"
                             class="status-pill status-pill-height height-filter-btn"
                             onclick="applyPlantFilter('height', '35_plus', this)">
-                        35+ cm
+                        35+
                     </button>
                     <button type="button"
                             class="status-pill status-pill-height height-filter-btn"

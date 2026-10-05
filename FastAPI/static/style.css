@@ -372,3 +372,194 @@ input[type="date"].form-input { color-scheme: dark; color: var(--info-field-colo
   transform: scale(0.96);
 }
 
+.status-radio-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 0;
+}
+
+.status-radio-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.status-radio-label input[type="radio"] {
+  accent-color: var(--accent, #38bdf8);
+  cursor: pointer;
+}
+
+/* --- Card & Dossier Photo Carousel --- */
+.card-thumbnail-box.has-carousel .carousel-slide {
+  display: none;
+}
+.card-thumbnail-box.has-carousel .carousel-slide.active {
+  display: block;
+}
+.carousel-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 38px;
+  background: rgba(17, 17, 27, 0.78);
+  color: var(--text-main);
+  border: 1px solid var(--border-dim);
+  border-radius: 3px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.card-thumbnail-box:hover .carousel-nav-btn,
+.dossier-carousel-stage:hover .carousel-nav-btn {
+  opacity: 1;
+}
+.carousel-nav-btn:hover {
+  background: var(--red-crimson);
+  color: var(--bg-crust);
+  border-color: var(--red-crimson);
+}
+.carousel-prev {
+  left: 6px;
+}
+.carousel-next {
+  right: 6px;
+}
+.carousel-dots {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  z-index: 4;
+  background: rgba(17, 17, 27, 0.72);
+  padding: 4px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border-dim);
+}
+.carousel-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.carousel-dot:hover {
+  background: var(--text-main);
+}
+.carousel-dot.active {
+  background: var(--red-crimson);
+  transform: scale(1.25);
+}
+
+.dossier-carousel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.dossier-carousel-stage {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  background: var(--bg-crust);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dossier-carousel-Stage .carousel-nav-btn,
+.dossier-carousel-stage .carousel-nav-btn {
+  opacity: 0.9;
+  width: 34px;
+  height: 46px;
+  font-size: 24px;
+}
+.dossier-carousel-slide {
+  display: none;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+.dossier-carousel-slide.active {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dossier-carousel-slide a {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+.dossier-carousel-slide img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.dossier-carousel-caption {
+  position: absolute;
+  bottom: 8px;
+  right: 10px;
+  background: rgba(17, 17, 27, 0.88);
+  border: 1px solid var(--border-dim);
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.dossier-carousel-thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.dossier-carousel-dot {
+  width: 64px;
+  height: 50px;
+  border: 2px solid var(--border-dim);
+  border-radius: 3px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--bg-crust);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+.dossier-carousel-dot:hover {
+  opacity: 0.9;
+  border-color: var(--text-sub);
+}
+.dossier-carousel-dot.active {
+  opacity: 1;
+  border-color: var(--red-crimson);
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.35);
+}
+.dossier-carousel-dot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+

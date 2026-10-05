@@ -5,6 +5,7 @@ Consolidates View, Create, and Edit modals, eliminating duplicate form inputs.
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+import html
 import db
 from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH, render_photo_item_html, render_editable_photo_item_html
 
@@ -13,12 +14,12 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     """Consolidated form fields generator for both New and Edit plant modals."""
     now_str = datetime.now().strftime("%Y-%m-%d")
     plant_data = plant or {}
-    name_val = plant_data.get("name", "")
-    species_val = plant_data.get("species", "")
+    name_val = html.escape(str(plant_data.get("name", "")))
+    species_val = html.escape(str(plant_data.get("species", "")))
     if not is_edit and not species_val:
         species_val = "Adenium obesum"
-    aka_val = plant_data.get("aka", "")
-    loc_val = plant_data.get("location", "")
+    aka_val = html.escape(str(plant_data.get("aka", "")))
+    loc_val = html.escape(str(plant_data.get("location", "")))
     status_val = db.normalize_status(plant_data.get("status"))
 
     def _sanitize_date(val: Optional[str]) -> str:
@@ -32,7 +33,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             return s[:10]
         return ""
 
-    height_val = plant_data.get("height", "")
+    height_val = html.escape(str(plant_data.get("height", "")))
     if not is_edit and not height_val:
         height_val = f"0 cm ({now_str})"
 
@@ -40,23 +41,26 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     if not is_edit and not sow_val:
         sow_val = now_str
 
-    graft_val = plant_data.get("graft", "")
+    graft_val = html.escape(str(plant_data.get("graft", "")))
     padres_val = (plant_data.get("padres") or "").strip()
-    padre1_val, padre2_val = db.split_parents(padres_val)
-    pruned_val = plant_data.get("last_pruned", "")
-    repotted_val = plant_data.get("last_repotted", "")
-    fert_val = plant_data.get("fertilizante", "")
-    comm_val = plant_data.get("comentarios", "")
+    padre1_raw, padre2_raw = db.split_parents(padres_val)
+    padre1_val = html.escape(padre1_raw)
+    padre2_val = html.escape(padre2_raw)
+    padres_val_esc = html.escape(padres_val)
+    pruned_val = html.escape(str(plant_data.get("last_pruned", "")))
+    repotted_val = html.escape(str(plant_data.get("last_repotted", "")))
+    fert_val = html.escape(str(plant_data.get("fertilizante", "")))
+    comm_val = html.escape(str(plant_data.get("comentarios", "")))
     indxw_val = int(plant_data.get("indxw", 0))
 
     existing_keys = db.get_all_keys()
     plants_list = db.get_plants()
-    available_parents = [item for item in plants_list if item.get("name") != name_val]
+    available_parents = [item for item in plants_list if item.get("name") != plant_data.get("name", "")]
     datalist_items = []
     for parent_item in available_parents:
-        p_name = parent_item.get("name", "")
-        p_spec = parent_item.get("species", "")
-        p_aka = f" ({parent_item.get('aka')})" if parent_item.get("aka") else ""
+        p_name = html.escape(str(parent_item.get("name", "")))
+        p_spec = html.escape(str(parent_item.get("species", "")))
+        p_aka = f" ({html.escape(str(parent_item.get('aka')))})" if parent_item.get("aka") else ""
         datalist_items.append(f'<option value="{p_name}">{p_name} — {p_spec}{p_aka}</option>')
     keys_datalist = "".join(datalist_items)
 
@@ -66,12 +70,12 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             return '<span style="color: var(--text-dim); font-size: 11px;">✓ Sin parental seleccionado (default: "unknown")</span>'
         pl = db.get_plant(clean)
         if pl:
-            aka = f' ("{pl.get("aka")}")' if pl.get("aka") else ""
-            return f'<span style="color: var(--green-sage); font-weight: 600; font-size: 11px;">✓ Clave existente: {clean} — {pl.get("species", "")}{aka}</span>'
-        return f'<span style="color: var(--red-crimson); font-weight: 700; font-size: 11px;">✕ La clave \'{clean}\' no existe en la base de datos.</span>'
+            aka = f' ("{html.escape(str(pl.get("aka")))}")' if pl.get("aka") else ""
+            return f'<span style="color: var(--green-sage); font-weight: 600; font-size: 11px;">✓ Clave existente: {html.escape(clean)} — {html.escape(str(pl.get("species", "")))}{aka}</span>'
+        return f'<span style="color: var(--red-crimson); font-weight: 700; font-size: 11px;">✕ La clave \'{html.escape(clean)}\' no existe en la base de datos.</span>'
 
-    padre1_feedback = _initial_parent_feedback(padre1_val)
-    padre2_feedback = _initial_parent_feedback(padre2_val)
+    padre1_feedback = _initial_parent_feedback(padre1_raw)
+    padre2_feedback = _initial_parent_feedback(padre2_raw)
 
     key_input = f"""
         <input type="text"
@@ -299,12 +303,12 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                 </div>
 
                 <!-- Hidden combined input for direct form submission -->
-                <input type="hidden" id="inp-padres" name="padres" value="{padres_val or 'unknown'}" />
+                <input type="hidden" id="inp-padres" name="padres" value="{padres_val_esc or 'unknown'}" />
 
                 <div id="padres-preview-box" style="margin-top: 8px; font-size: 11px; font-family: var(--font-mono); color: var(--text-sub); display: flex; align-items: center; justify-content: space-between; border-top: 1px dashed var(--border-dim); padding-top: 6px;">
                     <div style="display: flex; align-items: center; gap: 6px;">
                         <span style="color: var(--text-dim);">FÓRMULA GENÉTICA:</span>
-                        <span id="padres-preview-text" style="color: var(--text-main); font-weight: 700;">{padres_val or 'unknown'}</span>
+                        <span id="padres-preview-text" style="color: var(--text-main); font-weight: 700;">{padres_val_esc or 'unknown'}</span>
                     </div>
                     <button type="button"
                             class="btn btn-sm"
@@ -505,7 +509,41 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     _, age_detailed = db.calculate_plant_age(plant.get("sowing_cutting_date"), plant.get("graft", ""))
 
     photo_items = [render_photo_item_html(plant_name, ph, allow_delete=False) for ph in photos]
-    photos_html = "".join(photo_items) if photo_items else """
+    if photos:
+        total_dp = len(photos)
+        if total_dp > 1:
+            d_slides = "".join(
+                f'<div class="dossier-carousel-slide{" active" if i == total_dp - 1 else ""}" data-idx="{i}">'
+                f'<a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir {ph} en alta resolución">'
+                f'<img src="/images/{ph}" alt="{plant_name} - {ph}" />'
+                f'</a>'
+                f'<div class="dossier-carousel-caption">{ph} ({i + 1} / {total_dp})</div>'
+                f'</div>'
+                for i, ph in enumerate(photos)
+            )
+            d_dots = "".join(
+                f'<button type="button" class="dossier-carousel-dot{" active" if i == total_dp - 1 else ""}" '
+                f'onclick="goToDossierSlide({i});" title="{ph}">'
+                f'<img src="/images/{ph}" alt="{ph}" />'
+                f'</button>'
+                for i, ph in enumerate(photos)
+            )
+            photos_html = f"""
+                <div class="dossier-carousel" id="dossier-carousel" data-current="{total_dp - 1}" data-total="{total_dp}" style="grid-column: 1 / -1;">
+                    <div class="dossier-carousel-stage">
+                        {d_slides}
+                        <button type="button" class="carousel-nav-btn carousel-prev" onclick="stepDossierSlide(-1);" title="Foto anterior">‹</button>
+                        <button type="button" class="carousel-nav-btn carousel-next" onclick="stepDossierSlide(1);" title="Foto siguiente">›</button>
+                    </div>
+                    <div class="dossier-carousel-thumbs">
+                        {d_dots}
+                    </div>
+                </div>
+            """
+        else:
+            photos_html = "".join(photo_items)
+    else:
+        photos_html = """
         <div style="color: var(--text-dim); font-size: 12px; grid-column: 1 / -1; padding: 12px 0; text-align: center;">
             No hay fotografías adjuntas para este ejemplar. Para añadir o gestionar fotos, pulsa [EDITAR DATOS].
         </div>
@@ -519,7 +557,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
             </div>
         """
 
-    aka_val = (plant.get("aka") or "").strip()
+    aka_val = html.escape((plant.get("aka") or "").strip())
     aka_badge = f'<strong style="color: var(--peach-orange); font-weight: 700;">"{aka_val}"</strong>' if aka_val else '<span style="color: var(--text-dim);">—</span>'
 
     padres_raw = (plant.get("padres") or "").strip()
@@ -530,9 +568,10 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
         clean_k = (k or "").strip()
         if not clean_k or clean_k.lower() in ("unknown", "desconocido"):
             return '<span style="color: var(--text-dim); font-style: italic;">unknown</span>'
+        esc_k = html.escape(clean_k)
         if clean_k in all_keys:
-            return f'<a href="#" hx-get="/plants/{clean_k}" hx-target="#modal-container" hx-swap="innerHTML" class="plant-key" style="color: #ff66cc; text-decoration: underline; font-weight: 700;" title="Abrir expediente del parental {clean_k}">{clean_k}</a>'
-        return f'<span style="color: var(--text-main); font-weight: 600;">{clean_k}</span>'
+            return f'<a href="#" hx-get="/plants/{esc_k}" hx-target="#modal-container" hx-swap="innerHTML" class="plant-key" style="color: #ff66cc; text-decoration: underline; font-weight: 700;" title="Abrir expediente del parental {esc_k}">{esc_k}</a>'
+        return f'<span style="color: var(--text-main); font-weight: 600;">{esc_k}</span>'
 
     if p1 and p2:
         padres_display_html = f"{_parent_link(p1)} <span style='color: var(--teal-accent); font-weight: bold;'>×</span> {_parent_link(p2)}"
@@ -541,21 +580,21 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
     elif p2:
         padres_display_html = f"<span style='color: var(--text-dim); font-style: italic;'>unknown</span> <span style='color: var(--teal-accent); font-weight: bold;'>×</span> {_parent_link(p2)}"
     elif padres_raw and padres_raw.lower() not in ("unknown", "desconocido"):
-        padres_display_html = f"<span style='color: var(--text-main);'>{padres_raw}</span>"
+        padres_display_html = f"<span style='color: var(--text-main);'>{html.escape(padres_raw)}</span>"
     else:
         padres_display_html = '<span style="color: var(--text-dim); font-style: italic;">unknown</span>'
 
     info_fields = [
         ("Alias", aka_val or "—", False),
-        ("Altura (Fecha - CM)", plant.get("height") or "—", False),
-        ("Edad", age_detailed, False),
-        ("Fecha Siembra / Esquejado", plant.get("sowing_cutting_date") or "—", False),
+        ("Altura (Fecha - CM)", html.escape(str(plant.get("height") or "—")), False),
+        ("Edad", html.escape(str(age_detailed)), False),
+        ("Fecha Siembra / Esquejado", html.escape(str(plant.get("sowing_cutting_date") or "—")), False),
         ("Linaje (Padres)", padres_display_html, False),
-        ("Injerto", plant.get("graft") or "Sin injerto (Raíz propia)", False),
-        ("Última Poda", plant.get("last_pruned") or "—", False),
-        ("Último Trasplante", plant.get("last_repotted") or "—", False),
-        ("Fertilización & Tratamientos Aplicados", plant.get("fertilizante") or "Sin tratamientos registrados", True),
-        ("Comentarios", plant.get("comentarios") or "Sin observaciones", True),
+        ("Injerto", html.escape(str(plant.get("graft") or "Sin injerto (Raíz propia)")), False),
+        ("Última Poda", html.escape(str(plant.get("last_pruned") or "—")), False),
+        ("Último Trasplante", html.escape(str(plant.get("last_repotted") or "—")), False),
+        ("Fertilización & Tratamientos Aplicados", html.escape(str(plant.get("fertilizante") or "Sin tratamientos registrados")), True),
+        ("Comentarios", html.escape(str(plant.get("comentarios") or "Sin observaciones")), True),
     ]
 
     fields_html = "\n".join(
@@ -892,6 +931,7 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
                   id="edit-plant-form"
                   onsubmit="autoFormatHeightInput(document.getElementById('inp-height')); updateCombinedPadres();">
                 <div class="modal-body">
+                    <div id="edit-plant-error-banner" style="display: none; margin-bottom: 14px;"></div>
                     {render_form_fields(plant=plant, is_edit=True)}
 
                     <!-- Hidden inputs for staged photo deletions -->

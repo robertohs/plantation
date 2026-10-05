@@ -496,7 +496,10 @@ async def update_plant_submit(
         "comentarios": comentarios.strip()
     }
     if indxw is not None:
-        plant_data["indxw"] = 1 if indxw.strip() in ("1", "true", "True", "on") else 0
+        try:
+            plant_data["indxw"] = int(indxw.strip())
+        except (ValueError, TypeError):
+            plant_data["indxw"] = 1 if indxw.strip() in ("1", "true", "True", "on") else 0
 
     success, msg = db.update_plant(key, plant_data)
     if not success:
@@ -504,7 +507,7 @@ async def update_plant_submit(
             <div id="edit-plant-error-banner" hx-swap-oob="outerHTML" class="alert-box alert-error" style="margin-bottom: 14px; display: block;">
                 ✕ {msg}
             </div>
-        """, status_code=400)
+        """)
 
     updated_plant = db.get_plant(key)
     if not updated_plant:
@@ -529,10 +532,11 @@ def delete_plant_endpoint(request: Request, name: str):
 
     plants = db.get_plants()
     grid_html = render_plants_grid(plants)
+    stats_oob = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
     admin_oob = get_oob_admin(request)
 
-    return HTMLResponse(grid_html + close_modal_oob + admin_oob)
+    return HTMLResponse(grid_html + stats_oob + close_modal_oob + admin_oob)
 
 
 # ==============================================================================

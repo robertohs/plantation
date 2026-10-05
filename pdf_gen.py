@@ -243,7 +243,7 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
     specs_left = [
         ("Clave", name),
         ("Fecha Siembra / Esqueje", safe_text(plant.get("sowing_cutting_date") or "—")),
-        ("Edad Registrada", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date")))),
+        ("Edad Registrada", safe_text(db.calculate_age_display(plant.get("sowing_cutting_date"), plant.get("graft", "")))),
         ("Injerto", safe_text(plant.get("graft") or "—")),
         ("Linaje (Padres)", safe_text(plant.get("padres") or "—")),
         ("Ubicación", safe_text(plant.get("location") or "Sin registrar")),

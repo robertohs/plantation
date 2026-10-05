@@ -60,8 +60,7 @@ def compute_collection_stats() -> Dict[str, Any]:
     grafted_count = 0
     own_roots_count = 0
     for p in plants:
-        graft_str = (p.get("graft") or "").lower()
-        if graft_str and ("sin injerto" not in graft_str) and ("raíz propia" not in graft_str) and ("raiz propia" not in graft_str):
+        if db.is_grafted(p.get("graft")):
             grafted_count += 1
         else:
             own_roots_count += 1

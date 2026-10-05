@@ -388,6 +388,10 @@ def matches_height_filter(height_str: Optional[str], filter_key: str) -> bool:
         return 5.0 <= height_cm < 15.0
     if key in ("less_15", "<15", "< 15", "less_than_15", "menor_15"):
         return height_cm < 15.0
+    if key in ("15_to_30", "15-30", "15_30", "15to30"):
+        return 15.0 <= height_cm < 30.0
+    if key in ("30_plus", "30+", "30plus", "mas_30", "+30"):
+        return height_cm >= 30.0
     if key in ("15_to_35", "15-35", "15_35", "15to35"):
         return 15.0 <= height_cm < 35.0
     if key in ("35_plus", "35+", "35plus", "mas_35", "+35"):
@@ -674,7 +678,10 @@ def create_plant(data: Dict[str, Any]) -> Tuple[bool, str]:
     reg_date = (data.get("registration_date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     indxw_raw = data.get("indxw", 0)
-    indxw_val = 1 if indxw_raw in (1, "1", True, "true", "True", "on") else 0
+    try:
+        indxw_val = int(indxw_raw)
+    except (ValueError, TypeError):
+        indxw_val = 1 if str(indxw_raw).strip() in ("1", "true", "True", "on") else 0
 
     raw_height = (data.get("height") or "").strip()
     height_val = format_height_entry(raw_height, force_date=True)
@@ -755,7 +762,10 @@ def update_plant(name: str, data: Dict[str, Any]) -> Tuple[bool, str]:
             sow_val = ""
 
         if "indxw" in data:
-            indxw_val = 1 if data["indxw"] in (1, "1", True, "true", "True", "on") else 0
+            try:
+                indxw_val = int(data["indxw"])
+            except (ValueError, TypeError):
+                indxw_val = 1 if str(data["indxw"]).strip() in ("1", "true", "True", "on") else 0
         else:
             indxw_val = int(existing["indxw"] if "indxw" in existing.keys() else 0)
 

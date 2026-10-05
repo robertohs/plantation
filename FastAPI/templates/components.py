@@ -75,20 +75,46 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
     status_cls = STATUS_BADGE_CLASSES.get(status, "status-OK")
     status_es = STATUS_SPANISH.get(status, status)
 
-    # Photos: latest cover image + count pill
+    # Photos: interactive carousel when multiple photos exist, or cover image + count pill
     photos = p.get("photos") or []
     if photos:
-        cover_img = html.escape(str(photos[-1]))
         total_p = len(photos)
-        count_pill = f'<span class="thumbnail-badge-count photo-count-pill">{total_p} {"FOTO" if total_p == 1 else "FOTOS"}</span>'
-        thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper">
-            <img class="card-thumbnail-img plant-thumb" src="/images/{cover_img}" alt="{name}" loading="lazy" />
-            <div class="card-thumbnail-placeholder" style="display: none;">
-                <div class="placeholder-icon">🌱</div>
-                <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
-            </div>
-            {count_pill}
-        </div>"""
+        count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p} {"FOTO" if total_p == 1 else "FOTOS"}</span>'
+        if total_p > 1:
+            slides_html = "".join(
+                f'<img class="card-thumbnail-img plant-thumb carousel-slide{" active" if idx == total_p - 1 else ""}" '
+                f'src="/images/{html.escape(str(ph))}" alt="{name} ({idx + 1}/{total_p})" '
+                f'data-idx="{idx}" loading="lazy" />'
+                for idx, ph in enumerate(photos)
+            )
+            dots_html = "".join(
+                f'<span class="carousel-dot{" active" if idx == total_p - 1 else ""}" '
+                f'onclick="event.stopPropagation(); goToCardSlide(\'{name}\', {idx});" '
+                f'title="Foto {idx + 1} de {total_p}"></span>'
+                for idx in range(total_p)
+            )
+            count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p}/{total_p} FOTOS</span>'
+            thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper has-carousel" id="carousel-{name}" data-current="{total_p - 1}" data-total="{total_p}">
+                {slides_html}
+                <div class="card-thumbnail-placeholder" style="display: none;">
+                    <div class="placeholder-icon">🌱</div>
+                    <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
+                </div>
+                <button type="button" class="carousel-nav-btn carousel-prev" onclick="event.stopPropagation(); stepCardSlide('{name}', -1);" title="Foto anterior" aria-label="Foto anterior">‹</button>
+                <button type="button" class="carousel-nav-btn carousel-next" onclick="event.stopPropagation(); stepCardSlide('{name}', 1);" title="Foto siguiente" aria-label="Foto siguiente">›</button>
+                <div class="carousel-dots" id="carousel-dots-{name}" onclick="event.stopPropagation();">{dots_html}</div>
+                {count_pill}
+            </div>"""
+        else:
+            cover_img = html.escape(str(photos[-1]))
+            thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper">
+                <img class="card-thumbnail-img plant-thumb" src="/images/{cover_img}" alt="{name}" loading="lazy" />
+                <div class="card-thumbnail-placeholder" style="display: none;">
+                    <div class="placeholder-icon">🌱</div>
+                    <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
+                </div>
+                {count_pill}
+            </div>"""
     else:
         thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper no-photo">
             <div class="card-thumbnail-placeholder">
