@@ -5,9 +5,11 @@ and dashboard templates for specimen analysis in a single isolated module.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
+import html
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse
 import db
+from FastAPI.templates.admin import render_db_health_card
 
 router = APIRouter()
 
@@ -123,11 +125,11 @@ def compute_collection_stats() -> Dict[str, Any]:
         {"label": "S/D", "tag": "Sin fecha", "count": cohort_unknown, "pct": round((cohort_unknown / total) * 100, 1)}
     ]
 
-    # 5. Height Distribution & Biometrics
+    # 5. Height Distribution & Biometrics (aligned with main filter bar: <15, 15-35, 35+ cm)
     tier_mini = 0      # < 5 cm
     tier_juvenil = 0   # 5 - 15 cm
-    tier_medium = 0    # 15 - 30 cm
-    tier_giant = 0     # > 30 cm
+    tier_medium = 0    # 15 - 35 cm
+    tier_giant = 0     # 35+ cm
     tier_unknown = 0
 
     tallest_plant = None
@@ -154,7 +156,7 @@ def compute_collection_stats() -> Dict[str, Any]:
                 tier_mini += 1
             elif h < 15.0:
                 tier_juvenil += 1
-            elif h <= 30.0:
+            elif h < 35.0:
                 tier_medium += 1
             else:
                 tier_giant += 1
@@ -164,8 +166,8 @@ def compute_collection_stats() -> Dict[str, Any]:
     height_tiers = [
         {"label": "< 5 cm", "tag": "Miniatura", "count": tier_mini, "pct": round((tier_mini / total) * 100, 1)},
         {"label": "5 - 15 cm", "tag": "Juvenil", "count": tier_juvenil, "pct": round((tier_juvenil / total) * 100, 1)},
-        {"label": "15 - 30 cm", "tag": "Desarrollado", "count": tier_medium, "pct": round((tier_medium / total) * 100, 1)},
-        {"label": "> 30 cm", "tag": "Columnar/Ejemplar", "count": tier_giant, "pct": round((tier_giant / total) * 100, 1)},
+        {"label": "15 - 35 cm", "tag": "Desarrollado", "count": tier_medium, "pct": round((tier_medium / total) * 100, 1)},
+        {"label": "35+ cm", "tag": "Columnar/Ejemplar", "count": tier_giant, "pct": round((tier_giant / total) * 100, 1)},
         {"label": "S/D", "tag": "Sin medir", "count": tier_unknown, "pct": round((tier_unknown / total) * 100, 1)}
     ]
 
@@ -307,7 +309,7 @@ def render_genus_bars_svg(genera: List[Dict[str, Any]]) -> str:
         rows_html.append(f"""
         <div style="display: flex; flex-direction: column; gap: 3px; font-family: var(--font-mono);">
             <div style="display: flex; justify-content: space-between; font-size: 11px; align-items: baseline;">
-                <span style="font-style: italic; color: var(--blue-sky); font-weight: 600;">{g['name']}</span>
+                <span style="font-style: italic; color: var(--blue-sky); font-weight: 600;">{html.escape(str(g['name']))}</span>
                 <span style="font-size: 10px; color: var(--text-dim);">
                     <strong style="color: var(--text-main);">{g['count']}</strong> ({g['pct']}%)
                 </span>
@@ -422,7 +424,7 @@ def render_location_meters(locations: List[Dict[str, Any]]) -> str:
         rows.append(f"""
         <div style="display: flex; justify-content: space-between; align-items: center; font-family: var(--font-mono); font-size: 11px; padding: 5px 8px; background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 2px;">
             <span style="color: var(--text-sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%;">
-                📍 {loc['name']}
+                📍 {html.escape(str(loc['name']))}
             </span>
             <span style="font-weight: 700; color: var(--text-main);">
                 {loc['count']} <span style="font-size: 10px; color: var(--text-dim); font-weight: normal;">({loc['pct']}%)</span>
@@ -442,8 +444,8 @@ def render_stats_modal() -> str:
     s = compute_collection_stats()
 
     # Oldest and tallest badge strings
-    oldest_str = f"[{s['oldest']['name']}] {s['oldest']['display']}" if s['oldest'] else "—"
-    tallest_str = f"[{s['tallest']['name']}] {s['tallest']['height_cm']} cm" if s['tallest'] else "—"
+    oldest_str = html.escape(f"[{s['oldest']['name']}] {s['oldest']['display']}") if s['oldest'] else "—"
+    tallest_str = html.escape(f"[{s['tallest']['name']}] {s['tallest']['height_cm']} cm") if s['tallest'] else "—"
 
     # Quarantine alert card
     quarantine_section = ""
@@ -452,24 +454,24 @@ def render_stats_modal() -> str:
             f"""
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: 6px 10px; background: rgba(239, 68, 68, 0.08); border-left: 3px solid var(--red-crimson); margin-bottom: 6px; font-family: var(--font-mono); font-size: 11px;">
                 <div style="flex: 1;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <button type="button"
                                 class="btn btn-red btn-sm"
-                                hx-get="/plants/{q['name']}/modal/view"
+                                hx-get="/plants/{html.escape(str(q['name']))}/modal/view"
                                 hx-target="#modal-container"
                                 hx-swap="innerHTML"
                                 title="Abrir expediente">
-                            VER [{q['name']}]
+                            VER [{html.escape(str(q['name']))}]
                         </button>
-                        <span style="font-weight: 700; color: var(--text-main);">{q['species']}</span>
-                        {f'<span style="color: var(--text-dim); font-size: 10px;">"{q["aka"]}"</span>' if q["aka"] else ''}
+                        <span style="font-weight: 700; color: var(--text-main);">{html.escape(str(q['species']))}</span>
+                        {f'<span style="color: var(--text-dim); font-size: 10px;">"{html.escape(str(q["aka"]))}"</span>' if q["aka"] else ''}
                     </div>
                     <div style="color: var(--text-sub); font-size: 10.5px; margin-top: 3px;">
-                        ⚠️ {q['comentarios']}
+                        ⚠️ {html.escape(str(q['comentarios']))}
                     </div>
                 </div>
                 <div style="font-size: 10px; color: var(--text-dim); white-space: nowrap;">
-                    {q['location']}
+                    {html.escape(str(q['location']))}
                 </div>
             </div>
             """
@@ -518,6 +520,9 @@ def render_stats_modal() -> str:
 
             <div class="modal-body" style="padding: 16px 20px 24px 20px; overflow-y: auto;">
                 
+                <!-- DATABASE RELIABILITY & BACKUP STATUS -->
+                {render_db_health_card()}
+
                 {quarantine_section}
 
                 <!-- TOP KPI RIBBON -->
@@ -614,7 +619,7 @@ def render_stats_modal() -> str:
 
             </div>
 
-            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-dim);">
                     Plantation Analytics Engine v1.0 · Cálculos basados en SQLite
                 </span>

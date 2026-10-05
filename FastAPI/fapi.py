@@ -14,6 +14,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, Response, FileResponse, RedirectResponse
+from starlette.background import BackgroundTask
 
 import db
 from img_conv import validate_and_save_photo, process_batch_photo, delete_photo_file, cleanup_plant_photos, IMAGES_DIR
@@ -292,17 +293,19 @@ async def bulk_delete_modal_action(
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
 
     inv = db.get_inventory_stats()
+    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
     oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
     oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
+    reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
     toast_banner = f"""
     <div id="bulk-del-toast-banner" style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; color: var(--red-crimson); font-size: 13px; font-weight: 600;">
-        <span>🗑 <strong>Baja masiva completada:</strong> Se eliminaron {deleted_count} ejemplares de la base de datos y se purgaron {cleaned_photos_count} fotografías en disco.</span>
+        <span>🗑 <strong>Baja masiva completada:</strong> Se eliminaron {deleted_count} ejemplares de la base de datos y se purgaron {cleaned_photos_count} fotografías .</span>
         <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--red-crimson); font-weight: bold; cursor: pointer; font-size: 16px;">✕</button>
     </div>
     """
 
-    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob + oob_admin_stats + oob_admin_table)
+    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob + oob_admin_badge + oob_admin_stats + oob_admin_table + reset_filters_script)
 
 
 @router.get("/plants/validate-bulk-keys", response_class=HTMLResponse)
@@ -446,12 +449,32 @@ async def bulk_create_plants_submit(
     }
 
     # Fast single-pass batch photo optimization:
-    # Converts image once in memory into WebP bytes, then writes disk files instantly
+    # Check key availability first so existing keys' photos on disk are never overwritten
+    avail_keys, conflict_keys = db.check_keys_availability(keys)
+    if conflict_keys and not is_skip:
+        conflict_list = ", ".join(conflict_keys[:10]) + ("..." if len(conflict_keys) > 10 else "")
+        return HTMLResponse(f"""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
+                    ✕ Las siguientes claves ya existen en la base de datos: {html.escape(conflict_list)}. Marque la opción de omitir existentes o cambie el prefijo/rango.
+                </div>
+            </div>
+        """)
+
+    if not avail_keys:
+        return HTMLResponse("""
+            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
+                    ✕ Todas las claves generadas ya existen en la base de datos. Ningún ejemplar fue creado.
+                </div>
+            </div>
+        """)
+
     plant_photos_map = {}
     if bulk_photo and bulk_photo.filename:
         file_bytes = await bulk_photo.read()
         if file_bytes and len(file_bytes) > 0:
-            ok_photo, p_map, _ = process_batch_photo(keys, file_bytes, bulk_photo.filename)
+            ok_photo, p_map, _ = process_batch_photo(avail_keys, file_bytes, bulk_photo.filename)
             if ok_photo:
                 plant_photos_map = p_map
 
@@ -477,8 +500,10 @@ async def bulk_create_plants_submit(
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
 
     inv = db.get_inventory_stats()
+    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
     oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
     oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
+    reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
     # Clear, intuitive, satisfying success modal
     success_modal = render_bulk_create_success_modal(
@@ -491,7 +516,7 @@ async def bulk_create_plants_submit(
         photos_count=len(plant_photos_map)
     )
 
-    return HTMLResponse(success_modal + plants_grid + stats_bar + oob_admin_stats + oob_admin_table)
+    return HTMLResponse(success_modal + plants_grid + stats_bar + oob_admin_badge + oob_admin_stats + oob_admin_table + reset_filters_script)
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
@@ -643,8 +668,9 @@ async def create_plant_submit(
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
     admin_oob = get_oob_admin(request)
+    reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
-    return HTMLResponse(plants_grid + stats_bar + close_modal_oob + admin_oob)
+    return HTMLResponse(plants_grid + stats_bar + close_modal_oob + admin_oob + reset_filters_script)
 
 
 @router.get("/plants/{name}/modal/edit", response_class=HTMLResponse)
@@ -802,8 +828,9 @@ def delete_plant_endpoint(request: Request, name: str):
     stats_oob = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
     admin_oob = get_oob_admin(request)
+    reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
-    return HTMLResponse(grid_html + stats_oob + close_modal_oob + admin_oob)
+    return HTMLResponse(grid_html + stats_oob + close_modal_oob + admin_oob + reset_filters_script)
 
 
 # ==============================================================================
@@ -839,6 +866,7 @@ async def upload_individual_plant_photo(
     target_wrapper = "#edit-plant-photos-wrapper" if is_edit else "#plant-photos-wrapper"
     photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
     oob_card = render_card_html(updated_plant, oob=True)
+    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = get_oob_admin(request)
     oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
     oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
@@ -850,7 +878,7 @@ async def upload_individual_plant_photo(
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
             ✓ Nueva fotografía '{saved_fn}' añadida correctamente.
         </div>
-    """ + oob_card + oob_admin + oob_count_edit + oob_count_dossier)
+    """ + oob_card + oob_stats + oob_admin + oob_count_edit + oob_count_dossier)
 
 
 @router.delete("/plants/{name}/photos/{filename:path}", response_class=HTMLResponse)
@@ -868,6 +896,7 @@ def remove_plant_photo(request: Request, name: str, filename: str, source: str =
     photo_items = [render_photo_item_html(key, ph, allow_delete=is_edit, target_wrapper=target_wrapper) for ph in photos]
 
     oob_card = render_card_html(plant, oob=True)
+    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     oob_admin = get_oob_admin(request)
     oob_count_edit = f'<span id="edit-plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">GESTIÓN DE FOTOGRAFÍAS ({len(photos)})</span>'
     oob_count_dossier = f'<span id="plant-photos-count" class="form-label" style="color: var(--red-crimson);" hx-swap-oob="outerHTML">ARCHIVOS FOTOGRÁFICOS ADJUNTOS ({len(photos)})</span>'
@@ -881,7 +910,7 @@ def remove_plant_photo(request: Request, name: str, filename: str, source: str =
         <div class="alert-box alert-success" style="margin-top: 8px; font-size: 11px;">
             ✓ Foto '{filename}' eliminada del registro.
         </div>
-    """ + oob_card + oob_admin + oob_count_edit + oob_count_dossier)
+    """ + oob_card + oob_stats + oob_admin + oob_count_edit + oob_count_dossier)
 
 
 # ==============================================================================
@@ -920,14 +949,16 @@ def admin_bulk_delete(keys: List[str] = Form([])):
     oob_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
     oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     inv = db.get_inventory_stats()
+    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
     oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
+    reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
-    return HTMLResponse(render_admin_table_content() + oob_grid + oob_stats + oob_admin_stats)
+    return HTMLResponse(render_admin_table_content() + oob_grid + oob_stats + oob_admin_badge + oob_admin_stats + reset_filters_script)
 
 
 @router.delete("/admin/plant/{name}", response_class=HTMLResponse)
 def admin_delete_single_plant(name: str):
-    """Deletes a single plant from within the admin modal and updates grid & stats."""
+    """Deletes a single plant from within the admin modal and updates grid, stats, header badge, and tab counters."""
     key = db.clean_key(name)
     plant = db.get_plant(key)
     if plant:
@@ -940,8 +971,28 @@ def admin_delete_single_plant(name: str):
     oob_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
     oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     inv = db.get_inventory_stats()
+    sc = inv["status_counts"]
+    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
     oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
-    return HTMLResponse("" + oob_grid + oob_stats + oob_admin_stats)
+
+    tab_defs = [
+        ("ALL", f"TODOS ({inv['total']})"),
+        ("NO_PHOTOS", f"SIN FOTO ({inv['without_photos']})"),
+        ("GRAFTED", f"INJERTOS ({inv['with_graft']})"),
+        ("ILL", f"EN CUARENTENA ({sc.get('notOK', 0)})"),
+    ]
+    tabs_html = "\n".join(
+        f"""<button type="button"
+                    class="inv-tab-btn"
+                    hx-get="/admin/filter?tab={tag}"
+                    hx-target="#admin-table-container"
+                    hx-swap="innerHTML">{label}</button>"""
+        for tag, label in tab_defs
+    )
+    oob_admin_tabs = f'<div class="inventory-filter-tabs" id="admin-filter-tabs" hx-swap-oob="outerHTML" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;"><span style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-right: 4px;">FILTRO:</span>{tabs_html}</div>'
+    update_script = '<script>if (window.updateAdminSelectionCount) setTimeout(updateAdminSelectionCount, 20); if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
+
+    return HTMLResponse("" + oob_grid + oob_stats + oob_admin_badge + oob_admin_stats + oob_admin_tabs + update_script)
 
 
 @router.get("/admin/inventory.csv")
@@ -1086,10 +1137,18 @@ def download_full_archive():
                 if os.path.isfile(img_path) and not img_name.startswith("."):
                     zf.write(img_path, arcname=f"Images/{img_name}")
 
+    def _cleanup_temp_zip(path: str):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError:
+            pass
+
     return FileResponse(
         temp_zip_path,
         media_type="application/zip",
         filename=archive_filename,
+        background=BackgroundTask(_cleanup_temp_zip, temp_zip_path),
         headers={
             "Content-Disposition": f'attachment; filename="{archive_filename}"',
             "Cache-Control": "no-cache"

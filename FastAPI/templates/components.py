@@ -79,7 +79,7 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
     photos = p.get("photos") or []
     if photos:
         total_p = len(photos)
-        count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p} {"FOTO" if total_p == 1 else "FOTOS"}</span>'
+        count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p}/1</span>'
         if total_p > 1:
             slides_html = "".join(
                 f'<img class="card-thumbnail-img plant-thumb carousel-slide{" active" if idx == total_p - 1 else ""}" '
@@ -90,18 +90,18 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
             dots_html = "".join(
                 f'<span class="carousel-dot{" active" if idx == total_p - 1 else ""}" '
                 f'onclick="event.stopPropagation(); goToCardSlide(\'{name}\', {idx});" '
-                f'title="Foto {idx + 1} de {total_p}"></span>'
+                f'title="{idx + 1} de {total_p}"></span>'
                 for idx in range(total_p)
             )
-            count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p}/{total_p} FOTOS</span>'
+            count_pill = f'<span class="thumbnail-badge-count photo-count-pill" id="carousel-badge-{name}">{total_p}/{total_p}</span>'
             thumb_html = f"""<div class="card-thumbnail-box plant-thumb-wrapper has-carousel" id="carousel-{name}" data-current="{total_p - 1}" data-total="{total_p}">
                 {slides_html}
                 <div class="card-thumbnail-placeholder" style="display: none;">
                     <div class="placeholder-icon">🌱</div>
                     <div class="placeholder-text">IMAGEN NO DISPONIBLE</div>
                 </div>
-                <button type="button" class="carousel-nav-btn carousel-prev" onclick="event.stopPropagation(); stepCardSlide('{name}', -1);" title="Foto anterior" aria-label="Foto anterior">‹</button>
-                <button type="button" class="carousel-nav-btn carousel-next" onclick="event.stopPropagation(); stepCardSlide('{name}', 1);" title="Foto siguiente" aria-label="Foto siguiente">›</button>
+                <button type="button" class="carousel-nav-btn carousel-prev" onclick="event.stopPropagation(); stepCardSlide('{name}', -1);" title="anterior" aria-label="Foto anterior">‹</button>
+                <button type="button" class="carousel-nav-btn carousel-next" onclick="event.stopPropagation(); stepCardSlide('{name}', 1);" title=" siguiente" aria-label="Foto siguiente">›</button>
                 <div class="carousel-dots" id="carousel-dots-{name}" onclick="event.stopPropagation();">{dots_html}</div>
                 {count_pill}
             </div>"""
@@ -304,13 +304,13 @@ def render_stats_bar() -> str:
     return f"""
     <div class="stats-summary" id="stats-bar">
         <div>
-            TOTAL EJEMPLARES: <span class="stats-count-tag">{stats.get('total', 0)}</span> |
-            FOTOS EN DISCO: <span style="color: var(--blue-sky); font-weight: bold;">{stats.get('total_photos', 0)}</span> |
+            TOTAL EJEMPLARES: <span class="stats-count-tag">{stats.get('total', 0)}</span> 
+            FOTOS: <span style="color: var(--blue-sky); font-weight: bold;">{stats.get('total_photos', 0)}</span> |
             UBICACIONES: <span style="color: var(--text-main); font-weight: bold;">{stats.get('locations_count', 0)}</span> |
             CON ALIAS: <span style="color: var(--peach-orange); font-weight: bold;">{with_alias}</span>
         </div>
         <div style="display: flex; gap: 14px; font-size: 11.5px; font-weight: 600;">
-            <span style="color: var(--green-sage);">● OK: {ok_count}</span>
+            <span style="color: var(--green-sage);">● Ok: {ok_count}</span>
             <span style="color: #ef4444; font-weight: bold;">● notOK: {not_ok_count}</span>
         </div>
     </div>

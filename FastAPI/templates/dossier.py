@@ -4,6 +4,7 @@ Dedicated HTML view for web browser printing and technical specimen archiving.
 """
 
 from typing import Any, Dict
+import html
 import db
 from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH
 
@@ -16,16 +17,27 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
     photos = plant.get("photos", [])
     _, age_detailed = db.calculate_plant_age(plant.get("sowing_cutting_date"), plant.get("graft", ""))
 
+    name_esc = html.escape(str(plant.get("name") or ""))
+    species_esc = html.escape(str(plant.get("species") or ""))
+    height_esc = html.escape(str(plant.get("height") or "—"))
+    age_esc = html.escape(str(age_detailed or "—"))
+    sow_esc = html.escape(str(plant.get("sowing_cutting_date") or "—"))
+    graft_esc = html.escape(str(plant.get("graft") or "Sin injerto (Raíz propia)"))
+    pruned_esc = html.escape(str(plant.get("last_pruned") or "—"))
+    repotted_esc = html.escape(str(plant.get("last_repotted") or "—"))
+    fert_esc = html.escape(str(plant.get("fertilizante") or "—"))
+    comm_esc = html.escape(str(plant.get("comentarios") or "Sin observaciones registradas."))
+
     padres_raw = (plant.get("padres") or "").strip()
     p1, p2 = db.split_parents(padres_raw)
     if p1 and p2:
-        padres_display = f"{p1} × {p2}"
+        padres_display = f"{html.escape(p1)} × {html.escape(p2)}"
     elif p1:
-        padres_display = f"{p1} × unknown"
+        padres_display = f"{html.escape(p1)} × unknown"
     elif p2:
-        padres_display = f"unknown × {p2}"
+        padres_display = f"unknown × {html.escape(p2)}"
     elif padres_raw and padres_raw.lower() not in ("unknown", "desconocido"):
-        padres_display = padres_raw
+        padres_display = html.escape(padres_raw)
     else:
         padres_display = "unknown"
 
@@ -33,13 +45,14 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
     if photos:
         items = []
         for ph in photos:
+            ph_esc = html.escape(str(ph))
             items.append(f'''
             <div class="dossier-photo-card">
-                <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
-                    <img src="/images/{ph}" alt="{plant.get('name')}" class="dossier-photo-img" style="cursor: pointer;" />
+                <a href="/images/{ph_esc}" target="_blank" rel="noopener noreferrer" title="Abrir fotografía en nueva pestaña (alta resolución)">
+                    <img src="/images/{ph_esc}" alt="{name_esc}" class="dossier-photo-img" style="cursor: pointer;" />
                 </a>
                 <div class="dossier-photo-cap">
-                    <a href="/images/{ph}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph}</a>
+                    <a href="/images/{ph_esc}" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">{ph_esc}</a>
                 </div>
             </div>
             ''')
@@ -50,7 +63,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         </div>
         '''
 
-    aka_val = (plant.get("aka") or "").strip()
+    aka_val = html.escape((plant.get("aka") or "").strip())
     aka_display = f'<span>ALIAS: <strong style="color: var(--peach-orange);">"{aka_val}"</strong></span>' if aka_val else ''
 
     return f'''<!DOCTYPE html>
@@ -58,7 +71,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dossier - [{plant.get('name')}] {plant.get('species')}</title>
+    <title>Dossier - [{name_esc}] {species_esc}</title>
     <link rel="stylesheet" href="/static/style.css" />
     <style>
         .dossier-container {{
@@ -221,9 +234,9 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
 
         <div class="dossier-taxa-box">
             <div style="font-size: 11px; color: var(--red-crimson); font-weight: bold; letter-spacing: 1px;">IDENTIFICADOR</div>
-            <div class="dossier-species">{plant.get('species')}</div>
+            <div class="dossier-species">{species_esc}</div>
             <div style="font-size: 13px; color: var(--text-main); display: flex; gap: 14px; flex-wrap: wrap;">
-                <span>CLAVE DE COLECCIÓN: <strong class="plant-key" style="color: #ff66cc !important;">[{plant.get('name')}]</strong></span>
+                <span>CLAVE DE COLECCIÓN: <strong class="plant-key" style="color: #ff66cc !important;">[{name_esc}]</strong></span>
                 {aka_display}
             </div>
         </div>
@@ -237,15 +250,15 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
                 </tr>
                 <tr>
                     <th>ALTURA (FECHA - CM)</th>
-                    <td><strong style="color: var(--info-field-color);">{plant.get('height') or '—'}</strong></td>
+                    <td><strong style="color: var(--info-field-color);">{height_esc}</strong></td>
                 </tr>
                 <tr>
                     <th>EDAD</th>
-                    <td><strong style="color: var(--info-field-color);">{age_detailed}</strong></td>
+                    <td><strong style="color: var(--info-field-color);">{age_esc}</strong></td>
                 </tr>
                 <tr>
                     <th>FECHA SIEMBRA / ESQUEJADO</th>
-                    <td>{plant.get('sowing_cutting_date') or '—'}</td>
+                    <td>{sow_esc}</td>
                 </tr>
                 <tr>
                     <th>LINAJE (PADRES)</th>
@@ -253,23 +266,23 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
                 </tr>
                 <tr>
                     <th>INJERTO</th>
-                    <td>{plant.get('graft') or 'Sin injerto (Raíz propia)'}</td>
+                    <td>{graft_esc}</td>
                 </tr>
                 <tr>
                     <th>ÚLTIMA PODA</th>
-                    <td>{plant.get('last_pruned') or '—'}</td>
+                    <td>{pruned_esc}</td>
                 </tr>
                 <tr>
                     <th>ÚLTIMO TRASPLANTE</th>
-                    <td>{plant.get('last_repotted') or '—'}</td>
+                    <td>{repotted_esc}</td>
                 </tr>
                 <tr>
                     <th>FERTILIZACIÓN / NUTRICIÓN</th>
-                    <td>{plant.get('fertilizante') or '—'}</td>
+                    <td>{fert_esc}</td>
                 </tr>
                 <tr>
                     <th>NOTAS & OBSERVACIONES</th>
-                    <td>{plant.get('comentarios') or 'Sin observaciones registradas.'}</td>
+                    <td>{comm_esc}</td>
                 </tr>
             </tbody>
         </table>
@@ -277,7 +290,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         {photos_html}
 
         <div class="dossier-actions">
-            <a href="/pdf/plant/{plant.get('name')}" class="btn btn-red" target="_blank">
+            <a href="/pdf/plant/{name_esc}" class="btn btn-red" target="_blank">
                 🗎 [DESCARGAR PDF GENERADO]
             </a>
             <button class="btn btn-primary" onclick="window.print()">

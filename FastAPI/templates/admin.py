@@ -29,7 +29,7 @@ def render_db_health_card(integrity_result_msg: Optional[str] = None) -> str:
             </div>
             <div style="font-size: 11px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-start; text-align: left;">
                 <span>Tamaño DB: <strong style="color: var(--text-sub);">{health['database_size_formatted']}</strong></span>
-                <span>Copias en disco: <strong style="color: var(--blue-sky);">{health['total_backups']}</strong> (Programado cada 12h, max 20)</span>
+                <span>Copias : <strong style="color: var(--blue-sky);">{health['total_backups']}</strong> (Programado cada 12h, max 20)</span>
                 <span>Último respaldo: <strong style="color: var(--peach-orange);">{health['latest_backup_time']}</strong></span>
             </div>
         </div>
@@ -69,7 +69,7 @@ def render_admin_stats_cards(inv: dict) -> str:
     sc = inv["status_counts"]
     stat_cards = [
         (inv['total'], "EJEMPLARES TOTALES", "var(--red-crimson)"),
-        (sc.get('OK', 0), "SALUDABLES (● OK)", "var(--green-sage)"),
+        (sc.get('OK', 0), "SALUDABLES (● Ok)", "var(--green-sage)"),
         (sc.get('notOK', 0), "ENFERMOS / CUARENTENA (● notOK)", "#ef4444"),
         (f"{inv['with_photos']} <span style='font-size: 11px; color: var(--text-dim);'>({inv['total_photos']} fotos)</span>", "CON FOTO", "var(--blue-sky)"),
         (inv['without_photos'], "SIN FOTOGRAFÍA", "var(--red-crimson)" if inv['without_photos'] > 0 else "var(--text-sub)"),
@@ -125,7 +125,7 @@ def render_admin_table_content(filter_tag: str = "ALL", search_q: str = "") -> s
         rows.append(f"""
             <tr id="admin-row-{name_esc}">
                 <td style="text-align: center;">
-                    <input type="checkbox" name="keys" value="{name_esc}" class="admin-checkbox" />
+                    <input type="checkbox" name="keys" value="{name_esc}" class="admin-checkbox" onchange="updateAdminSelectionCount()" />
                 </td>
                 <td>
                     <a href="#"
@@ -162,7 +162,7 @@ def render_admin_table_content(filter_tag: str = "ALL", search_q: str = "") -> s
                             hx-delete="/admin/plant/{name_esc}"
                             hx-target="#admin-row-{name_esc}"
                             hx-swap="outerHTML"
-                            hx-confirm="¿Eliminar definitivamente el ejemplar '{name_esc}' y todas sus fotos del disco?"
+                            hx-confirm="¿Eliminar definitivamente el ejemplar '{name_esc}' y todas sus fotos ?"
                             title="Eliminar este ejemplar">
                         ELIMINAR
                     </button>
@@ -196,7 +196,7 @@ def render_admin_table_content(filter_tag: str = "ALL", search_q: str = "") -> s
     return f"""
     <div id="admin-table-and-tabs">
         <div class="inventory-toolbar" style="margin-top: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-            <div class="inventory-filter-tabs" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <div class="inventory-filter-tabs" id="admin-filter-tabs" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                 <span style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-right: 4px;">FILTRO:</span>
                 {tabs_html}
             </div>
@@ -215,20 +215,20 @@ def render_admin_table_content(filter_tag: str = "ALL", search_q: str = "") -> s
               hx-post="/admin/bulk-delete"
               hx-target="#admin-table-container"
               hx-swap="innerHTML"
-              hx-confirm="¿CONFIRMAR ELIMINACIÓN MASIVA de los ejemplares seleccionados y el borrado permanente de sus fotografías en disco?">
+              hx-confirm="¿CONFIRMAR ELIMINACIÓN MASIVA de los ejemplares seleccionados y el borrado permanente de sus fotografías?">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                     <button type="button"
                             class="btn btn-sm"
-                            onclick="document.querySelectorAll('.admin-checkbox').forEach(cb => cb.checked = true);">
-                        [✓ SELECCIONAR TODOS]
+                            onclick="selectVisibleAdminRows(true);">
+                        [✓ SELECCIONAR VISIBLES]
                     </button>
                     <button type="button"
                             class="btn btn-sm"
-                            onclick="document.querySelectorAll('.admin-checkbox').forEach(cb => cb.checked = false);">
+                            onclick="selectVisibleAdminRows(false);">
                         [✕ DESMARCAR TODOS]
                     </button>
-                    <span id="admin-selected-counter" style="font-size: 11px; color: var(--text-dim); margin-left: 8px;">
+                    <span id="admin-selected-counter" data-total-rows="{len(plants_to_show)}" style="font-size: 11px; color: var(--text-dim); margin-left: 8px;">
                         Mostrando {len(plants_to_show)} ejemplares
                     </span>
                 </div>
@@ -282,7 +282,7 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
                     <span class="modal-title" style="color: var(--peach-orange);">
                         ⚙ [ADMINISTRACIÓN // INVENTARIO]
                     </span>
-                    <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
+                    <span id="admin-total-badge" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
                         TOTAL: {inv['total']} EJEMPLARES
                     </span>
                 </div>
@@ -307,10 +307,7 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
                 
                 <div id="admin-stats-summary" style="display: none;"></div>
 
-                <!-- 1. DATABASE RELIABILITY & BACKUP STATUS -->
-                {render_db_health_card()}
-
-                <!-- 3. ACTIONS MASTER TOOLBAR -->
+                <!-- ACTIONS MASTER TOOLBAR -->
                 <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="font-size: 11px; font-weight: 700; color: var(--text-sub); display: flex; align-items: center; gap: 6px;">
                         <span>ACCIONES RÁPIDAS & DESCARGAS:</span>
@@ -374,26 +371,66 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
     <!-- Client-side fast filter script for instant search inside admin table -->
     <script>
         var _adminFilterTimer = null;
+
+        function updateAdminSelectionCount() {{
+            var rows = document.querySelectorAll('#admin-table-rows tr');
+            var visible = 0;
+            var checkedCount = 0;
+            rows.forEach(function(row) {{
+                var cb = row.querySelector('.admin-checkbox');
+                if (!cb) return;
+                if (row.style.display !== 'none') {{
+                    visible++;
+                }}
+                if (cb.checked) {{
+                    checkedCount++;
+                }}
+            }});
+            var searchBox = document.getElementById('admin-search-box');
+            var q = searchBox ? (searchBox.value || '').trim() : '';
+            var counter = document.getElementById('admin-selected-counter');
+            if (counter) {{
+                var baseText = 'Mostrando ' + visible + ' ejemplares' + (q ? ' (filtrados)' : '');
+                if (checkedCount > 0) {{
+                    counter.innerHTML = baseText + ' · <strong style="color: var(--peach-orange);">' + checkedCount + ' seleccionado(s)</strong>';
+                }} else {{
+                    counter.textContent = baseText;
+                }}
+            }}
+        }}
+
+        function selectVisibleAdminRows(checkState) {{
+            var rows = document.querySelectorAll('#admin-table-rows tr');
+            rows.forEach(function(row) {{
+                var cb = row.querySelector('.admin-checkbox');
+                if (!cb) return;
+                if (!checkState) {{
+                    cb.checked = false;
+                }} else if (row.style.display !== 'none') {{
+                    cb.checked = true;
+                }}
+            }});
+            updateAdminSelectionCount();
+        }}
+
         function filterAdminRowsLocally(query) {{
             clearTimeout(_adminFilterTimer);
             _adminFilterTimer = setTimeout(function() {{
                 var q = (query || '').toLowerCase().trim();
                 var rows = document.querySelectorAll('#admin-table-rows tr');
-                var visible = 0;
                 rows.forEach(function(row) {{
+                    var cb = row.querySelector('.admin-checkbox');
+                    if (!cb) return;
                     var text = row.innerText.toLowerCase();
                     if (!q || text.indexOf(q) !== -1) {{
                         row.style.display = '';
-                        visible++;
                     }} else {{
                         row.style.display = 'none';
+                        cb.checked = false;
                     }}
                 }});
-                var counter = document.getElementById('admin-selected-counter');
-                if (counter) {{
-                    counter.textContent = 'Mostrando ' + visible + ' ejemplares' + (q ? ' (filtrados)' : '');
-                }}
-            }}, 3);
+                updateAdminSelectionCount();
+            }}, 150);
         }}
     </script>
     """

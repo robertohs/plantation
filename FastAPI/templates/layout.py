@@ -37,7 +37,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plantation - Registro Botánico & Dossier PDF</title>
     <meta name="description" content="Gestor botánico" />
-    <link rel="stylesheet" href="/static/style.css?v=20261004_1" />
+    <link rel="stylesheet" href="/static/style.css?v=20261005_2" />
     <script src="/static/htmx.min.js"></script>
     <script>
         (function() {{
@@ -185,7 +185,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
             var badge = document.getElementById('carousel-badge-' + plantName);
             if (badge) {{
-                badge.textContent = (idx + 1) + '/' + total + ' FOTOS';
+                badge.textContent = (idx + 1) + '/' + total ;
             }}
         }}
 
@@ -299,6 +299,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                        class="search-input"
                        placeholder="Buscar por clave, alias ... "
                        oninput="onSearchFilterInput(this.value)"
+                       onkeydown="if (event.key === 'Enter') {{ event.preventDefault(); clearTimeout(_searchDebounceTimer); executePlantFilter(true); }}"
                        autocomplete="off" />
                 <span id="search-spinner" class="htmx-indicator" style="color: var(--red-crimson); font-size: 11px;">[BUSCANDO...]</span>
                 <kbd class="search-kbd" title="Atajo: presiona '/'">/</kbd>
@@ -319,7 +320,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                     <button type="button"
                             class="status-pill status-pill-ok status-filter-btn"
                             onclick="applyPlantFilter('status', 'OK', this)">
-                        ● OK
+                        ● Ok
                     </button>
                     <button type="button"
                             class="status-pill status-pill-notok status-filter-btn"
@@ -531,8 +532,32 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         }});
 
         var _searchDebounceTimer = null;
+        var _lastFilterEndpoint = null;
 
-        function executePlantFilter() {{
+        function resetPlantFiltersUI() {{
+            clearTimeout(_searchDebounceTimer);
+            _lastFilterEndpoint = '/plants';
+            var searchInp = document.getElementById('search-input');
+            if (searchInp) searchInp.value = '';
+            var stEl = document.getElementById('current-status-filter');
+            if (stEl) stEl.value = 'ALL';
+            var ageEl = document.getElementById('current-age-filter');
+            if (ageEl) ageEl.value = 'ALL';
+            var hEl = document.getElementById('current-height-filter');
+            if (hEl) hEl.value = 'ALL';
+
+            document.querySelectorAll('.status-filter-btn, .age-filter-btn, .height-filter-btn').forEach(function(b) {{
+                b.classList.remove('active');
+            }});
+            var stFirst = document.querySelector('.status-filter-btn');
+            if (stFirst) stFirst.classList.add('active');
+            var ageFirst = document.querySelector('.age-filter-btn');
+            if (ageFirst) ageFirst.classList.add('active');
+            var hFirst = document.querySelector('.height-filter-btn');
+            if (hFirst) hFirst.classList.add('active');
+        }}
+
+        function executePlantFilter(force) {{
             var searchInp = document.getElementById('search-input');
             var search = searchInp ? searchInp.value.trim() : '';
             var statusVal = document.getElementById('current-status-filter') ? document.getElementById('current-status-filter').value : 'ALL';
@@ -547,6 +572,11 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
             var qs = params.toString();
             var endpoint = '/plants' + (qs ? '?' + qs : '');
+
+            if (!force && endpoint === _lastFilterEndpoint) {{
+                return;
+            }}
+            _lastFilterEndpoint = endpoint;
 
             var spinner = document.getElementById('search-spinner');
             if (spinner) spinner.style.display = 'inline-block';
@@ -582,12 +612,19 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 }});
             }}
             if (btn) btn.classList.add('active');
-            executePlantFilter();
+            executePlantFilter(true);
         }}
 
         function onSearchFilterInput(val) {{
             clearTimeout(_searchDebounceTimer);
-            _searchDebounceTimer = setTimeout(executePlantFilter, 3);
+            var trimmed = (val || '').trim();
+            if (!trimmed) {{
+                executePlantFilter(false);
+                return;
+            }}
+            _searchDebounceTimer = setTimeout(function() {{
+                executePlantFilter(false);
+            }}, 500);
         }}
 
         var _appConfirmCallback = null;

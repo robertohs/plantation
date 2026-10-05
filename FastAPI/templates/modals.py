@@ -97,7 +97,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                maxlength="20"
                autocomplete="off"
                hx-get="/plants/validate-key"
-               hx-trigger="input changed delay:3ms, blur"
+               hx-trigger="input changed delay:500ms, blur"
                hx-target="#key-validation-feedback"
                hx-swap="innerHTML" />
         <div id="key-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;"></div>
@@ -241,7 +241,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                     </span>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="lineage-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                     <!-- Progenitor 1 Key -->
                     <div class="form-group" style="margin-bottom: 0;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -266,7 +266,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                                maxlength="20"
                                autocomplete="off"
                                hx-get="/plants/validate-parent-key?num=1&plant={name_val}"
-                               hx-trigger="input changed delay:200ms, blur, change"
+                               hx-trigger="input changed delay:500ms, blur, change"
                                hx-target="#padre1-validation-feedback"
                                hx-swap="innerHTML"
                                oninput="updateCombinedPadres();" />
@@ -299,7 +299,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                                maxlength="20"
                                autocomplete="off"
                                hx-get="/plants/validate-parent-key?num=2&plant={name_val}"
-                               hx-trigger="input changed delay:200ms, blur, change"
+                               hx-trigger="input changed delay:500ms, blur, change"
                                hx-target="#padre2-validation-feedback"
                                hx-swap="innerHTML"
                                oninput="updateCombinedPadres();" />
@@ -696,6 +696,16 @@ def render_new_plant_modal() -> str:
     return f"""
     <div class="modal-overlay" id="new-plant-modal">
         <div class="modal-dialog">
+            <div class="modal-header">
+                <span class="modal-title">+ [REGISTRAR NUEVO EJEMPLAR]</span>
+                <button type="button"
+                        class="modal-close-btn"
+                        hx-get="/modal/close"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Cerrar ventana [ESC]"
+                        aria-label="Cerrar modal">✕</button>
+            </div>
             <form hx-post="/plants"
                   hx-target="#plant-container"
                   hx-swap="innerHTML"
@@ -979,16 +989,27 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
                 </div>
 
                 <div class="modal-footer-sticky">
-                    <button type="button"
-                            class="btn"
-                            hx-get="/plants/{plant.get('name')}"
-                            hx-target="#modal-container"
-                            hx-swap="innerHTML">
-                        [VOLVER AL EXPEDIENTE]
-                    </button>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button"
+                                class="btn"
+                                hx-get="/plants/{plant.get('name')}"
+                                hx-target="#modal-container"
+                                hx-swap="innerHTML">
+                            [VOLVER AL EXPEDIENTE]
+                        </button>
+                        <button type="button"
+                                class="btn btn-red"
+                                hx-delete="/plants/{plant.get('name')}"
+                                hx-target="#plant-container"
+                                hx-swap="innerHTML"
+                                hx-confirm="¿Eliminar definitivamente el ejemplar '{html.escape(str(plant.get('name', '')))}' y todas sus fotografías?"
+                                title="Eliminar definitivamente este ejemplar">
+                            🗑 [ELIMINAR]
+                        </button>
+                    </div>
                     <button type="submit"
                             id="edit-plant-submit-btn"
-                            class="btn btn-red"
+                            class="btn btn-green"
                             style="font-weight: 700; padding: 8px 24px;">
                         ✓ [GUARDAR CAMBIOS]
                     </button>
@@ -1380,7 +1401,7 @@ def render_bulk_create_modal() -> str:
 
                         <!-- Panel: Sequential Mode -->
                         <div id="bulk-seq-panel">
-                            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 12px;">
+                            <div class="bulk-seq-grid" style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 12px;">
                                 
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label class="form-label" for="bulk-prefix" style="color: var(--text-main);">
@@ -1402,25 +1423,26 @@ def render_bulk_create_modal() -> str:
                                 </div>
 
                                 <div class="form-group" style="margin-bottom: 0;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                                        <label class="form-label" for="bulk-start" style="color: var(--text-main);">
-                                            NÚMERO INICIAL *
-                                        </label>
+                                    <label class="form-label" for="bulk-start" style="color: var(--text-main);">
+                                        NÚMERO INICIAL *
+                                    </label>
+                                    <div style="display: flex; gap: 6px; align-items: stretch;">
+                                        <input type="number"
+                                               id="bulk-start"
+                                               name="start_num"
+                                               class="form-input"
+                                               value="1"
+                                               min="1"
+                                               style="flex: 1; min-width: 0;"
+                                               oninput="onBulkInputsChanged();" />
                                         <button type="button"
                                                 onclick="suggestNextFreeNumber()"
                                                 class="btn btn-sm btn-green"
-                                                style="padding: 1px 6px; font-size: 9.5px; line-height: 1.2;"
+                                                style="height: auto; padding: 0 10px; font-size: 10px; font-weight: 700; white-space: nowrap; flex-shrink: 0;"
                                                 title="Calcular el siguiente número libre para este prefijo en la BD">
                                             ⚡ SIGUIENTE
                                         </button>
                                     </div>
-                                    <input type="number"
-                                           id="bulk-start"
-                                           name="start_num"
-                                           class="form-input"
-                                           value="1"
-                                           min="1"
-                                           oninput="onBulkInputsChanged();" />
                                     <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
                                         Primer número de secuencia
                                     </div>
@@ -1551,7 +1573,7 @@ def render_bulk_create_modal() -> str:
                                        id="bulk-aka"
                                        name="aka"
                                        class="form-input"
-                                       placeholder="Ej: GOLDEN, KETO-33D!, Drunken, Drunken JAPANSE PRO MAX, Deki1"
+                                       placeholder="alias.."
                                        autocomplete="off" />
                                 <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
                                     Alias botánico idéntico para todos los ejemplares del lote (sin numeración secuencial).
@@ -1576,7 +1598,7 @@ def render_bulk_create_modal() -> str:
                                 <div class="status-radio-group">
                                     <label class="status-radio-label">
                                         <input type="radio" name="status" value="OK" checked />
-                                        <span class="status-badge status-OK" style="font-size: 11px;">● OK (Saludable)</span>
+                                        <span class="status-badge status-OK" style="font-size: 11px;">● Ok (Saludable)</span>
                                     </label>
                                     <label class="status-radio-label">
                                         <input type="radio" name="status" value="notOK" />
@@ -1594,7 +1616,7 @@ def render_bulk_create_modal() -> str:
                                        class="form-input"
                                        value="Semilla + Injerto"
                                        list="cultivation-type-datalist"
-                                       placeholder="Ej: Semilla + Injerto, Semilla, Injerto, Cutting" />
+                                       placeholder="Ej: Semilla + Injerto" />
                                 <div style="display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px;">
                                     <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Semilla + Injerto'">Semilla + Injerto</button>
                                     <button type="button" class="btn-today" onclick="document.getElementById('bulk-graft').value='Semilla'">Semilla</button>
@@ -1634,7 +1656,7 @@ def render_bulk_create_modal() -> str:
                             <!-- Parents / Lineage -->
                             <div class="form-group full">
                                 <label class="form-label">PROGENITORES / LINAJE (MADRE & PADRE)</label>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div class="lineage-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                                     <div>
                                         <input type="text"
                                                id="bulk-padre1"
@@ -2047,7 +2069,7 @@ def render_bulk_delete_modal() -> str:
                         🗑 [BAJA MASIVA DE EJEMPLARES // BATCH REMOVAL]
                     </span>
                     <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
-                        PURGA SELECTIVA & ELIMINACIÓN DE ARCHIVOS EN DISCO
+                        PURGA SELECTIVA & ELIMINACIÓN DE ARCHIVOS
                     </span>
                 </div>
                 <button type="button"
@@ -2111,7 +2133,7 @@ def render_bulk_delete_modal() -> str:
 
                         <!-- Panel 1: Range & Prefix Mode -->
                         <div id="del-panel-range">
-                            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 8px;">
+                            <div class="bulk-seq-grid" style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 8px;">
                                 
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label class="form-label" for="del-prefix" style="color: var(--text-main);">
@@ -2199,14 +2221,14 @@ def render_bulk_delete_modal() -> str:
 
                         <!-- Panel 3: Filter by Criteria Mode -->
                         <div id="del-panel-filter" style="display: none; margin-bottom: 8px;">
-                            <div style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 12px;">
+                            <div class="bulk-filter-grid" style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 12px;">
                                 
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label class="form-label" for="del-filter-status">ESTADO SANITARIO</label>
                                     <select id="del-filter-status" class="form-input" onchange="onBulkDelInputsChanged();">
                                         <option value="ALL">Cualquier estado</option>
                                         <option value="notOK">Solo en cuarentena (● notOK)</option>
-                                        <option value="OK">Solo saludables (● OK)</option>
+                                        <option value="OK">Solo saludables (● Ok)</option>
                                     </select>
                                 </div>
 
@@ -2258,7 +2280,7 @@ def render_bulk_delete_modal() -> str:
                                    onchange="onBulkDelInputsChanged();" />
                             <div style="font-size: 12px; color: var(--text-main); line-height: 1.4;">
                                 <strong style="color: var(--red-crimson);">CONFIRMACIÓN OBLIGATORIA DE PURGA DEFINITIVA:</strong><br />
-                                Entiendo que esta operación eliminará de forma irreversible los registros seleccionados en la base de datos SQLite y purgará permanentemente sus archivos fotográficos del disco.
+                                Entiendo que esta operación eliminará de forma irreversible los registros seleccionados en la base de datos SQLite y purgará permanentemente sus archivos fotográficos.
                             </div>
                         </label>
                     </div>
@@ -2422,7 +2444,7 @@ def render_bulk_delete_modal() -> str:
 
             var badgeEl = document.getElementById('del-impact-badge');
             if (badgeEl) {{
-                badgeEl.textContent = matched.length.toLocaleString() + ' ejemplares identificados · ' + totalPhotos.toLocaleString() + ' fotos en disco';
+                badgeEl.textContent = matched.length.toLocaleString() + ' ejemplares identificados · ' + totalPhotos.toLocaleString() + ' fotos ';
             }}
 
             var container = document.getElementById('bulk-del-preview-container');
@@ -2538,7 +2560,7 @@ def render_import_db_modal(error_msg: Optional[str] = None, success_info: Option
                             DB/backups/{html.escape(success_info['safety_backup'])}
                         </span>
                         <span style="font-size: 10.5px; color: var(--text-dim);">
-                            Si en cualquier momento desea revertir este cambio, su snapshot previo se encuentra seguro y disponible en disco (retención de hasta 20 rollbacks).
+                            Si en cualquier momento desea revertir este cambio, su snapshot previo se encuentra seguro y disponible (retención de hasta 20 rollbacks).
                         </span>
                     </div>
                 </div>
