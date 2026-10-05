@@ -58,7 +58,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dossier Técnico - [{plant.get('name')}] {plant.get('species')}</title>
+    <title>Dossier - [{plant.get('name')}] {plant.get('species')}</title>
     <link rel="stylesheet" href="/static/style.css" />
     <style>
         .dossier-container {{
@@ -198,12 +198,12 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         }}
     </style>
 </head>
-<body data-theme="japanese indigo">
+<body data-theme="default">
     <script>
         try {{
-            var t = localStorage.getItem('plantation_theme') || 'japanese indigo';
+            var t = localStorage.getItem('plantation_theme') || 'default';
             if (['catpuchin', 'catppuccin', 'green olive', 'green-olive', 'adenium power', 'adenium-power'].indexOf(t.toLowerCase()) !== -1) {{
-                t = 'japanese indigo';
+                t = 'default';
             }}
             document.body.setAttribute('data-theme', t);
         }} catch(e) {{}}
@@ -212,7 +212,7 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
         <div class="dossier-topbar">
             <div>
                 <div class="dossier-brand">[PLANTATION] EXPEDIENTE BOTÁNICO OFICIAL</div>
-                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">SISTEMA TÉCNICO DE REGISTRO & TAXONOMÍA DE COLECCIÓN</div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">SISTEMA DE REGISTRO</div>
             </div>
             <div>
                 <span class="status-badge {status_cls} dossier-badge-status">● {status_es}</span>

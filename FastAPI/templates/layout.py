@@ -7,10 +7,11 @@ from .components import render_plants_grid
 
 
 THEMES = [
-    {"id": "japanese indigo", "icon": "🌊", "name": "Indigo", "desc": "藍染 Aizome · Índigo & cielo", "bg": "#0b1120", "accent": "#38bdf8"},
-    {"id": "golden", "icon": "🏺", "name": "Golden", "desc": "Kintsugi · Oro & ámbar", "bg": "#17130e", "accent": "#f1b343"},
-    {"id": "darkerthanblack", "icon": "🌑", "name": "Black", "desc": "OLED Noir · Negro & neón", "bg": "#000000", "accent": "#ff334b"},
-    {"id": "unicorn", "icon": "🦄", "name": "Unicorn", "desc": "Pastel Synthwave · Lavanda, turquesa & neón", "bg": "#131124", "accent": "#ff66cc"},
+    {"id": "default", "icon": "⚖️", "name": "Default", "bg": "#0d0f12", "accent": "#3b82f6"},
+    {"id": "japanese indigo", "icon": "🌊", "name": "Indigo", "bg": "#0b1120", "accent": "#38bdf8"},
+    {"id": "golden", "icon": "🏺", "name": "Golden", "bg": "#17130e", "accent": "#f1b343"},
+    {"id": "darkerthanblack", "icon": "🌑", "name": "Black", "bg": "#000000", "accent": "#ff334b"},
+    {"id": "unicorn", "icon": "🦄", "name": "Unicorn", "bg": "#131124", "accent": "#ff66cc"},
 ]
 
 
@@ -23,10 +24,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             <span class="theme-swatch" style="background: {t['bg']}; border-color: {t['accent']};">
                 <span class="theme-swatch-dot" style="background: {t['accent']}; box-shadow: 0 0 6px {t['accent']};"></span>
             </span>
-            <span class="theme-info">
-                <span class="theme-name">{t['icon']} {t['name']}</span>
-                <span class="theme-desc">{t['desc']}</span>
-            </span>
+            <span class="theme-name" style="flex-grow: 1;">{t['icon']} {t['name']}</span>
             <span class="theme-check">✓</span>
         </button>"""
         for t in THEMES
@@ -38,15 +36,15 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Plantation - Registro Botánico & Dossier PDF</title>
-    <meta name="description" content="Gestor botánico y dossiers técnicos con SQLite, HTMX y exportación PDF." />
+    <meta name="description" content="Gestor botánico" />
     <link rel="stylesheet" href="/static/style.css?v=20261004_1" />
     <script src="/static/htmx.min.js"></script>
     <script>
         (function() {{
             try {{
-                var t = localStorage.getItem('plantation_theme') || 'japanese indigo';
+                var t = localStorage.getItem('plantation_theme') || 'default';
                 if (['catpuchin', 'catppuccin', 'green olive', 'green-olive', 'adenium power', 'adenium-power'].indexOf(t.toLowerCase()) !== -1) {{
-                    t = 'japanese indigo';
+                    t = 'default';
                 }}
                 document.documentElement.setAttribute('data-theme', t);
             }} catch(e) {{}}
@@ -246,9 +244,10 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                     hx-get="/plants/modal/new"
                     hx-target="#modal-container"
                     hx-swap="innerHTML"
-                    title="Nuevo Ejemplar"
-                    aria-label="Nuevo Ejemplar">
-                <span style="font-size: 16px; font-weight: bold; line-height: 1; display: inline-flex; align-items: center; justify-content: center;">+</span>
+                    title="Registrar nuevo ejemplar"
+                    aria-label="Registrar nueva planta">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span class="btn-label-text" style="font-size: 12px; font-weight: 700; line-height: 1; letter-spacing: 0.3px;">NUEVA PLANTA</span>
             </button>
             <div id="admin-nav-slot">
                 <button type="button"
@@ -273,16 +272,15 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             </button>
             <div class="theme-dropdown-container" id="theme-switcher-container">
                 <button type="button"
-                        class="btn"
+                        class="btn btn-icon-square"
                         id="theme-toggle-btn"
                         onclick="toggleThemeDropdown(event)"
                         aria-haspopup="true"
                         aria-expanded="false"
                         title="Esquema de color">
-                    <span id="theme-btn-icon" style="font-size: 15px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">🌊</span>
+                    <span id="theme-btn-icon" style="font-size: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1;">⚖️</span>
                 </button>
                 <div id="theme-dropdown-menu" class="theme-dropdown-menu" style="display: none;">
-                    <div class="theme-dropdown-header">ESQUEMA DE COLOR // PALETA</div>
                     {theme_buttons}
                 </div>
             </div>
@@ -293,14 +291,17 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         <div id="admin-container" style="display: none;"></div>
         <div class="control-toolbar">
             <div class="search-line">
-                <span class="input-prompt">Buscar&gt;</span>
+                <span class="search-icon" aria-hidden="true">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </span>
                 <input type="text"
                        id="search-input"
                        class="search-input"
-                       placeholder="..."
+                       placeholder="Buscar por clave, alias ... "
                        oninput="onSearchFilterInput(this.value)"
                        autocomplete="off" />
                 <span id="search-spinner" class="htmx-indicator" style="color: var(--red-crimson); font-size: 11px;">[BUSCANDO...]</span>
+                <kbd class="search-kbd" title="Atajo: presiona '/'">/</kbd>
             </div>
 
             <input type="hidden" id="current-status-filter" value="ALL" />
@@ -440,9 +441,10 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
     <script>
         var THEMES = {{
-            'japanese indigo': {{ icon: '🌊', name: 'Japanese Indigo' }},
+            'default': {{ icon: '⚖️', name: 'Default' }},
+            'japanese indigo': {{ icon: '🌊', name: 'Indigo' }},
             'golden': {{ icon: '🏺', name: 'Golden' }},
-            'darkerthanblack': {{ icon: '🌑', name: 'Darker Than Black' }},
+            'darkerthanblack': {{ icon: '🌑', name: 'Black' }},
             'unicorn': {{ icon: '🦄', name: 'Unicorn' }},
             'unicorn lover pro max': {{ icon: '🦄', name: 'Unicorn' }}
         }};
@@ -458,10 +460,10 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         function applyTheme(themeName) {{
             var key = (themeName || '').toLowerCase().replace(/-/g, ' ');
             if (['catpuchin', 'catppuccin', 'green olive', 'adenium power'].indexOf(key) !== -1 || !THEMES[key]) {{
-                key = 'japanese indigo';
+                key = 'default';
             }}
             document.documentElement.setAttribute('data-theme', key);
-            var cfg = THEMES[key] || {{ icon: '🌊', name: 'Japanese Indigo' }};
+            var cfg = THEMES[key] || {{ icon: '⚖️', name: 'Default' }};
             var iconEl = document.getElementById('theme-btn-icon');
             var btnEl = document.getElementById('theme-toggle-btn');
             if (iconEl) iconEl.textContent = cfg.icon;
@@ -503,15 +505,29 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
         }});
 
         document.addEventListener('DOMContentLoaded', function() {{
-            var saved = 'japanese indigo';
+            var saved = 'default';
             try {{
-                saved = localStorage.getItem('plantation_theme') || 'japanese indigo';
+                saved = localStorage.getItem('plantation_theme') || 'default';
                 if (['catpuchin', 'catppuccin', 'green olive', 'adenium power'].indexOf(saved.toLowerCase()) !== -1) {{
-                    saved = 'japanese indigo';
+                    saved = 'default';
                     localStorage.setItem('plantation_theme', saved);
                 }}
             }} catch(e) {{}}
             applyTheme(saved);
+        }});
+
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === '/' || (e.ctrlKey && e.key.toLowerCase() === 'k')) {{
+                var tag = (document.activeElement && document.activeElement.tagName) || '';
+                if (tag !== 'INPUT' && tag !== 'TEXTAREA') {{
+                    e.preventDefault();
+                    var searchInput = document.getElementById('search-input');
+                    if (searchInput) {{
+                        searchInput.focus();
+                        searchInput.select();
+                    }}
+                }}
+            }}
         }});
 
         var _searchDebounceTimer = null;
@@ -571,7 +587,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
         function onSearchFilterInput(val) {{
             clearTimeout(_searchDebounceTimer);
-            _searchDebounceTimer = setTimeout(executePlantFilter, 160);
+            _searchDebounceTimer = setTimeout(executePlantFilter, 3);
         }}
 
         var _appConfirmCallback = null;

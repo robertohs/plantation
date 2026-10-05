@@ -113,7 +113,7 @@ def fit_text_to_width(pdf: FPDF, text: str, max_w: float, font_family: str = "He
 class BotanicalPDF(FPDF):
     """Custom FPDF document with official botanical header, footer, and utility components."""
 
-    def __init__(self, title_text="EXPEDIENTE TÉCNICO BOTÁNICO", **kwargs):
+    def __init__(self, title_text="EXPEDIENTE", **kwargs):
         super().__init__(format="A4", unit="mm", **kwargs)
         self.doc_title = title_text
         self.set_margins(15, 15, 15)

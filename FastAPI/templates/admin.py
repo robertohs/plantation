@@ -19,21 +19,21 @@ def render_db_health_card(integrity_result_msg: Optional[str] = None) -> str:
         status_text = integrity_result_msg
 
     return f"""
-    <div id="db-health-card" class="inventory-stat-card" style="margin-top: 10px; margin-bottom: 12px; padding: 12px 16px; border: 1px solid var(--border-dim); background: var(--bg-crust); border-radius: 4px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;">
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; align-items: center; gap: 10px;">
+    <div id="db-health-card" class="inventory-stat-card" style="margin-top: 10px; margin-bottom: 12px; padding: 12px 16px; border: 1px solid var(--border-dim); background: var(--bg-crust); border-radius: 4px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; text-align: left;">
+        <div style="display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-start;">
                 <span style="font-weight: 700; font-size: 11px; letter-spacing: 0.5px; color: var(--text-main);">ESTADO BASE DE DATOS & RESPALDOS AUTOMÁTICOS:</span>
                 <span style="color: {status_color}; font-weight: 700; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">
                     ● {status_text}
                 </span>
             </div>
-            <div style="font-size: 11px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 16px;">
+            <div style="font-size: 11px; color: var(--text-dim); display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-start; text-align: left;">
                 <span>Tamaño DB: <strong style="color: var(--text-sub);">{health['database_size_formatted']}</strong></span>
                 <span>Copias en disco: <strong style="color: var(--blue-sky);">{health['total_backups']}</strong> (Programado cada 12h, max 20)</span>
                 <span>Último respaldo: <strong style="color: var(--peach-orange);">{health['latest_backup_time']}</strong></span>
             </div>
         </div>
-        <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 8px; align-items: center; justify-content: flex-start; flex-wrap: wrap;">
             <button type="button"
                     class="btn btn-sm"
                     hx-get="/admin/check-integrity"
@@ -134,7 +134,7 @@ def render_admin_table_content(filter_tag: str = "ALL", search_q: str = "") -> s
                        hx-swap="innerHTML"
                        class="plant-key"
                        style="font-size: 13px; color: #ff66cc; text-decoration: underline; cursor: pointer;"
-                       title="Abrir expediente técnico">
+                       title="Abrir expediente">
                         {name_esc}
                     </a>
                 </td>
@@ -270,7 +270,6 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
     Designed in the exact same modal pattern as Botanical Analytics/Stats.
     """
     inv = db.get_inventory_stats()
-    stats_grid_html = render_admin_stats_cards(inv)
     table_section_html = render_admin_table_content(filter_tag=filter_tag)
 
     return f"""
@@ -281,7 +280,7 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
                     <span class="modal-title" style="color: var(--peach-orange);">
-                        ⚙ [PANEL DE ADMINISTRACIÓN // INVENTARIO BOTÁNICO]
+                        ⚙ [ADMINISTRACIÓN // INVENTARIO]
                     </span>
                     <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
                         TOTAL: {inv['total']} EJEMPLARES
@@ -306,12 +305,9 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
             <!-- MODAL BODY (SCROLLABLE) -->
             <div class="modal-body" style="padding: 16px 20px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;">
                 
-                <!-- 1. KEY INVENTORY METRICS CARDS -->
-                <div class="inventory-stats-grid" id="admin-stats-summary" style="margin-bottom: 0;">
-                    {stats_grid_html}
-                </div>
+                <div id="admin-stats-summary" style="display: none;"></div>
 
-                <!-- 2. DATABASE RELIABILITY & BACKUP STATUS -->
+                <!-- 1. DATABASE RELIABILITY & BACKUP STATUS -->
                 {render_db_health_card()}
 
                 <!-- 3. ACTIONS MASTER TOOLBAR -->
@@ -377,23 +373,27 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
 
     <!-- Client-side fast filter script for instant search inside admin table -->
     <script>
+        var _adminFilterTimer = null;
         function filterAdminRowsLocally(query) {{
-            var q = (query || '').toLowerCase().trim();
-            var rows = document.querySelectorAll('#admin-table-rows tr');
-            var visible = 0;
-            rows.forEach(function(row) {{
-                var text = row.innerText.toLowerCase();
-                if (!q || text.indexOf(q) !== -1) {{
-                    row.style.display = '';
-                    visible++;
-                }} else {{
-                    row.style.display = 'none';
+            clearTimeout(_adminFilterTimer);
+            _adminFilterTimer = setTimeout(function() {{
+                var q = (query || '').toLowerCase().trim();
+                var rows = document.querySelectorAll('#admin-table-rows tr');
+                var visible = 0;
+                rows.forEach(function(row) {{
+                    var text = row.innerText.toLowerCase();
+                    if (!q || text.indexOf(q) !== -1) {{
+                        row.style.display = '';
+                        visible++;
+                    }} else {{
+                        row.style.display = 'none';
+                    }}
+                }});
+                var counter = document.getElementById('admin-selected-counter');
+                if (counter) {{
+                    counter.textContent = 'Mostrando ' + visible + ' ejemplares' + (q ? ' (filtrados)' : '');
                 }}
-            }});
-            var counter = document.getElementById('admin-selected-counter');
-            if (counter) {{
-                counter.textContent = 'Mostrando ' + visible + ' ejemplares' + (q ? ' (filtrados)' : '');
-            }}
+            }}, 3);
         }}
     </script>
     """

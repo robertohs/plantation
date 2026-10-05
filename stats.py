@@ -458,7 +458,7 @@ def render_stats_modal() -> str:
                                 hx-get="/plants/{q['name']}/modal/view"
                                 hx-target="#modal-container"
                                 hx-swap="innerHTML"
-                                title="Abrir expediente técnico">
+                                title="Abrir expediente">
                             VER [{q['name']}]
                         </button>
                         <span style="font-weight: 700; color: var(--text-main);">{q['species']}</span>

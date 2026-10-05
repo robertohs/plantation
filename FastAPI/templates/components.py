@@ -147,8 +147,8 @@ def render_card_html(p: Dict[str, Any], oob: bool = False) -> str:
         <div class="card-head">
             <div class="card-head-left">
                 <span class="plant-key" title="Clave de ejemplar">{name}</span>
-                <span class="status-badge {status_cls}">● {status_es}</span>
                 {aka_html}
+                <span class="status-badge {status_cls}">● {status_es}</span>
             </div>
         </div>
         {thumb_html}

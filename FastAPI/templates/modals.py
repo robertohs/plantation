@@ -97,7 +97,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                maxlength="20"
                autocomplete="off"
                hx-get="/plants/validate-key"
-               hx-trigger="input changed delay:250ms, blur"
+               hx-trigger="input changed delay:3ms, blur"
                hx-target="#key-validation-feedback"
                hx-swap="innerHTML" />
         <div id="key-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;"></div>
@@ -142,6 +142,24 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
             </div>
 
             <div class="form-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <label class="form-label" for="inp-height" style="margin-bottom: 0;">ALTURA (CM)</label>
+                    <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">(Fecha actual añadida automáticamente)</span>
+                </div>
+                <input type="text"
+                       id="inp-height"
+                       name="height"
+                       class="form-input"
+                       value="{height_val}"
+                       placeholder="Ej: 40 cm (o escribe 40)"
+                       autocomplete="off"
+                       onblur="autoFormatHeightInput(this)" />
+                <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">
+                    Si introduces <strong style="color: var(--teal-accent);">40</strong> se guardará automáticamente como <strong style="color: var(--green-sage);">40 cm ({now_str})</strong>
+                </div>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label" for="inp-location">UBICACIÓN / BANCO / ESTANTE</label>
                 <input type="text"
                        id="inp-location"
@@ -163,24 +181,6 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                         <input type="radio" name="status" value="notOK" {'checked' if status_val == 'notOK' else ''} />
                         <span class="status-badge status-notOK" style="font-size: 11px;">● notOK</span>
                     </label>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <label class="form-label" for="inp-height" style="margin-bottom: 0;">ALTURA (CM)</label>
-                    <span style="font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);">(Fecha actual añadida automáticamente)</span>
-                </div>
-                <input type="text"
-                       id="inp-height"
-                       name="height"
-                       class="form-input"
-                       value="{height_val}"
-                       placeholder="Ej: 40 cm (o escribe 40)"
-                       autocomplete="off"
-                       onblur="autoFormatHeightInput(this)" />
-                <div style="font-size: 10px; color: var(--text-dim); margin-top: 2px;">
-                    Si introduces <strong style="color: var(--teal-accent);">40</strong> se guardará automáticamente como <strong style="color: var(--green-sage);">40 cm ({now_str})</strong>
                 </div>
             </div>
 
@@ -617,7 +617,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
         <div class="modal-dialog">
             <div class="modal-header">
                 <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <span class="modal-title">[EXPEDIENTE TÉCNICO: <span class="plant-key" style="color: #ff66cc !important;">{plant.get('name')}</span>]</span>
+                    <span class="modal-title">[KEY: <span class="plant-key" style="color: #ff66cc !important;">{plant.get('name')}</span>]</span>
                     <span class="status-badge {status_cls}">● {status_es}</span>
                 </div>
                 <button class="modal-close-btn"
@@ -696,15 +696,6 @@ def render_new_plant_modal() -> str:
     return f"""
     <div class="modal-overlay" id="new-plant-modal">
         <div class="modal-dialog">
-            <div class="modal-header">
-                <span class="modal-title">+ [REGISTRO DE NUEVO EJEMPLAR BOTÁNICO]</span>
-                <button class="modal-close-btn"
-                        hx-get="/modal/close"
-                        hx-target="#modal-container"
-                        hx-swap="innerHTML"
-                        title="Cancelar y cerrar">✕</button>
-            </div>
-
             <form hx-post="/plants"
                   hx-target="#plant-container"
                   hx-swap="innerHTML"
