@@ -226,25 +226,8 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
 
         function toggleAdminPanel(e) {{
             if (e && e.preventDefault) e.preventDefault();
-            var panel = document.getElementById('admin-panel');
-            var container = document.getElementById('admin-container');
-            if (!container) return;
-            if (panel) {{
-                if (window.htmx) {{
-                    htmx.ajax('GET', '/admin/close', {{ target: '#admin-container', swap: 'innerHTML' }});
-                }} else {{
-                    fetch('/admin/close').then(function() {{ container.innerHTML = ''; }});
-                }}
-            }} else {{
-                if (window.htmx) {{
-                    htmx.ajax('GET', '/admin', {{ target: '#admin-container', swap: 'innerHTML' }});
-                }} else {{
-                    fetch('/admin').then(function(r) {{ return r.text(); }}).then(function(html) {{ container.innerHTML = html; }});
-                }}
-                setTimeout(function() {{
-                    var p = document.getElementById('admin-panel');
-                    if (p) p.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
-                }}, 150);
+            if (window.htmx) {{
+                htmx.ajax('GET', '/admin/modal', {{ target: '#modal-container', swap: 'innerHTML' }});
             }}
         }}
     </script>
@@ -271,7 +254,9 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
                 <button type="button"
                         class="btn"
                         id="admin-nav-btn"
-                        onclick="toggleAdminPanel(event)"
+                        hx-get="/admin/modal"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
                         title="Panel de Administración e Inventario"
                         aria-label="Panel de Administración">
                     <span style="font-size: 12px; font-weight: 700; line-height: 1; display: inline-flex; align-items: center; gap: 4px;">⚙ ADMIN</span>
@@ -305,7 +290,7 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
     </header>
 
     <main class="app-layout">
-        <div id="admin-container"></div>
+        <div id="admin-container" style="display: none;"></div>
         <div class="control-toolbar">
             <div class="search-line">
                 <span class="input-prompt">Buscar&gt;</span>

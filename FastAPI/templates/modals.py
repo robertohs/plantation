@@ -6,6 +6,7 @@ Consolidates View, Create, and Edit modals, eliminating duplicate form inputs.
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import html
+import json
 import db
 from .components import STATUS_BADGE_CLASSES, STATUS_SPANISH, render_photo_item_html, render_editable_photo_item_html
 
@@ -1207,10 +1208,10 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
 
 
 def render_bulk_keys_preview(
-    prefix: str = "k",
+    prefix: str = "K",
     count: int = 10,
     start_num: int = 1,
-    pad_zeros: bool = False,
+    pad_zeros: Any = 2,
     skip_conflicts: bool = True
 ) -> str:
     """Renders the real-time visual preview and validation badges for batch key generation."""
@@ -1221,38 +1222,35 @@ def render_bulk_keys_preview(
     avail_count = len(avail)
     conf_count = len(conf)
 
-    # Banner message
     if conf_count == 0:
         banner = f"""
-        <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;">
+        <div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;">
             <span style="font-size: 14px;">✓</span>
-            <div><strong>{total_k} claves disponibles:</strong> Ninguna clave existe previamente en la base de datos. Todas listas para registro.</div>
+            <div><strong>{total_k} claves disponibles:</strong> Ningún conflicto con registros existentes en la base de datos.</div>
         </div>
         """
     else:
-        conf_samples = ", ".join(conf[:8]) + ("..." if len(conf) > 8 else "")
+        conf_samples = ", ".join(conf[:6]) + ("..." if len(conf) > 6 else "")
         if skip_conflicts:
             banner = f"""
-            <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;">
+            <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 14px;">⚠️</span>
                 <div>
-                    <strong>{conf_count} clave{'s' if conf_count > 1 else ''} ya existe{'n' if conf_count > 1 else ''} en la BD:</strong> {html.escape(conf_samples)}.<br />
-                    <span style="color: var(--text-main);">Se registrarán <strong>{avail_count} nuevos ejemplares</strong> (omitiendo las ya existentes).</span>
+                    <strong>{conf_count} clave{'s' if conf_count > 1 else ''} en uso en la BD:</strong> {html.escape(conf_samples)}.<br />
+                    <span>Se omitirán los duplicados y se registrarán <strong>{avail_count} nuevos ejemplares</strong> disponibles.</span>
                 </div>
             </div>
             """
         else:
             banner = f"""
-            <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 10px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;">
+            <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 14px;">✕</span>
                 <div>
-                    <strong>CONFLICTO DE CLAVES DUPLICADAS:</strong> Las claves <strong>{html.escape(conf_samples)}</strong> ya están en uso.<br />
-                    <span>Active la casilla "Omitir existentes" o cambie el código/rango inicial.</span>
+                    <strong>CONFLICTO DE CLAVES:</strong> Las claves <strong>{html.escape(conf_samples)}</strong> ya están registradas. Marque "Omitir existentes" o cambie el número inicial.
                 </div>
             </div>
             """
 
-    # Badge chips for every generated key
     chips = []
     conf_set = set(k.lower() for k in conf)
     for k in keys:
@@ -1269,19 +1267,16 @@ def render_bulk_keys_preview(
             </span>
             """)
 
-    chips_html = "".join(chips)
-    if not chips:
-        chips_html = '<span style="color: var(--text-dim); font-size: 11px;">Indique un prefijo y cantidad válida.</span>'
-
-    submit_disabled = "disabled" if (avail_count == 0 or (conf_count > 0 and not skip_conflicts)) else ""
+    chips_html = "".join(chips) if chips else '<span style="color: var(--text-dim); font-size: 11px;">Indique un prefijo y cantidad válida.</span>'
+    submit_disabled = (avail_count == 0 or (conf_count > 0 and not skip_conflicts))
 
     return f"""
     {banner}
     <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-        <span>SECUENCIA RESULTANTE ({total_k} CLAVES GENERADAS):</span>
-        <span style="color: var(--text-main); font-weight: 700;">{avail_count} DISPONIBLES · {conf_count} EN USO</span>
+        <span>PREVISUALIZACIÓN DE CLAVES ({total_k} GENERADAS):</span>
+        <span style="color: var(--text-main); font-weight: 700;">🟢 {avail_count} DISPONIBLES · 🔴 {conf_count} EN USO</span>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 120px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 8px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 110px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 8px;">
         {chips_html}
     </div>
     <script>
@@ -1291,7 +1286,7 @@ def render_bulk_keys_preview(
                 btn.disabled = {'true' if submit_disabled else 'false'};
                 btn.style.opacity = {'0.5' if submit_disabled else '1'};
                 btn.style.cursor = {'not-allowed' if submit_disabled else 'pointer'};
-                btn.textContent = '➕ CREAR LOTE DE {avail_count} EJEMPLARES';
+                btn.innerHTML = '➕ CREAR LOTE DE {avail_count} EJEMPLARES';
             }}
         }})();
     </script>
@@ -1299,314 +1294,1233 @@ def render_bulk_keys_preview(
 
 
 def render_bulk_create_modal() -> str:
-    """Renders the comprehensive Bulk Specimen Creation modal."""
+    """Renders the comprehensive, intuitive Bulk Specimen Creation modal."""
     now_str = datetime.now().strftime("%Y-%m-%d")
-    initial_preview = render_bulk_keys_preview(prefix="k", count=10, start_num=1, pad_zeros=False, skip_conflicts=True)
+    all_keys = db.get_all_keys()
+    existing_keys_json = json.dumps([k.upper() for k in all_keys])
+    
+    # Existing species and locations
+    distinct_species = db.get_distinct_species()
+    distinct_locations = db.get_distinct_locations()
 
+    # Datalists
+    species_options = "".join(f'<option value="{html.escape(s)}">{html.escape(s)}</option>' for s in distinct_species)
+    location_options = "".join(f'<option value="{html.escape(loc)}">{html.escape(loc)}</option>' for loc in distinct_locations)
+    
     # Parent datalist
     plants_list = db.get_plants()
-    datalist_items = []
-    for p in plants_list:
-        p_name = html.escape(str(p.get("name", "")))
-        p_spec = html.escape(str(p.get("species", "")))
-        p_aka = f" ({html.escape(str(p.get('aka')))})" if p.get("aka") else ""
-        datalist_items.append(f'<option value="{p_name}">{p_name} — {p_spec}{p_aka}</option>')
-    keys_datalist = "".join(datalist_items)
+    parent_options = "".join(
+        f'<option value="{html.escape(str(p.get("name", "")))}">{html.escape(str(p.get("name", "")))} — {html.escape(str(p.get("species", "")))}</option>'
+        for p in plants_list
+    )
 
     return f"""
-    <div class="modal-overlay" id="bulk-plant-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-modal-title">
-        <div class="modal-card" style="max-width: 900px; max-height: 92vh; overflow-y: auto;">
+    <div class="modal-overlay" id="bulk-plant-modal" role="dialog" aria-modal="true" style="display: flex;">
+        <div class="modal-dialog" style="max-width: 960px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+            
+            <!-- MODAL HEADER -->
             <div class="modal-header">
-                <div>
-                    <span class="modal-title" id="bulk-modal-title">
-                        [ PLANTATION ] ALTA MASIVA DE EJEMPLARES (BATCH ADD)
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span class="modal-title" style="color: var(--green-sage);">
+                        🌿 [ALTA MASIVA DE EJEMPLARES // BATCH REGISTRATION]
                     </span>
-                    <div style="font-size: 11px; color: var(--text-dim); margin-top: 3px;">
-                        Creación simultánea de múltiples ejemplares botánicos con taxonomía y cuidados compartidos.
-                    </div>
+                    <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
+                        GENERADOR SECUENCIAL & CONDICIONES COMUNES
+                    </span>
                 </div>
                 <button type="button"
-                        class="btn-close"
-                        onclick="document.getElementById('modal-container').innerHTML = '';"
+                        class="modal-close-btn"
+                        hx-get="/modal/close"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Cerrar ventana [ESC]"
                         aria-label="Cerrar modal">
-                    ✕ ESC
+                    ✕
                 </button>
             </div>
 
+            <!-- MODAL FORM -->
             <form id="bulk-plant-form"
                   hx-post="/plants/bulk-create"
-                  hx-target="#plant-grid"
+                  hx-target="#plant-container"
                   hx-swap="innerHTML"
                   enctype="multipart/form-data"
-                  style="display: flex; flex-direction: column; gap: 16px;">
+                  style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden;">
 
-                <!-- 1. KEY GENERATOR PANEL -->
-                <div style="background: var(--bg-mantle); border: 2px solid var(--green-sage); border-radius: 6px; padding: 14px 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px;">
-                        <span style="font-size: 12px; font-weight: 700; color: var(--green-sage); letter-spacing: 0.5px;">
-                            ⚙ GENERADOR SECUENCIAL DE CLAVES / IDENTIFICADORES
-                        </span>
-                        <span style="font-size: 10.5px; color: var(--text-dim);">
-                            Comprobación automática contra registros existentes en BD
-                        </span>
-                    </div>
+                <input type="hidden" id="bulk-key-mode" name="key_mode" value="seq" />
 
-                    <div style="display: grid; grid-template-columns: 2fr 1.5fr 1.5fr; gap: 12px; margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="bulk-prefix" style="color: var(--text-main);">
-                                PREFIJO / CÓDIGO CLAVE *
-                            </label>
-                            <input type="text"
-                                   id="bulk-prefix"
-                                   name="prefix"
-                                   class="form-input"
-                                   value="k"
-                                   placeholder="Ej: k, A, OB-, 2026-"
-                                   required
-                                   maxlength="15"
-                                   pattern="[A-Za-z0-9_-]+"
-                                   autocomplete="off"
-                                   hx-get="/plants/validate-bulk-keys"
-                                   hx-trigger="input changed delay:150ms, change"
-                                   hx-include="#bulk-plant-form"
-                                   hx-target="#bulk-keys-preview-container"
-                                   hx-swap="innerHTML" />
-                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                Código que antecede al número (ej: <code>k</code> -> <code>k1, k2...</code>)
+                <!-- SCROLLABLE BODY -->
+                <div class="modal-body" style="padding: 16px 20px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                    
+                    <!-- 1. KEY GENERATOR PANEL -->
+                    <div style="background: var(--bg-mantle); border: 1px solid var(--green-sage); border-radius: 6px; padding: 14px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; font-weight: 700; color: var(--green-sage); letter-spacing: 0.5px;">
+                                    ⚙ IDENTIFICADORES Y CLAVES DEL LOTE
+                                </span>
+                            </div>
+
+                            <!-- Mode Selector Switch -->
+                            <div style="display: flex; gap: 4px; background: var(--bg-crust); padding: 2px; border-radius: 4px; border: 1px solid var(--border-dim);">
+                                <button type="button"
+                                        id="tab-btn-seq"
+                                        class="inv-tab-btn active"
+                                        onclick="setBulkKeyMode('seq')"
+                                        style="font-size: 10.5px; padding: 3px 10px;">
+                                    ● GENERADOR SECUENCIAL
+                                </button>
+                                <button type="button"
+                                        id="tab-btn-manual"
+                                        class="inv-tab-btn"
+                                        onclick="setBulkKeyMode('manual')"
+                                        style="font-size: 10.5px; padding: 3px 10px;">
+                                    ● LISTA MANUAL / PEGAR CLAVES
+                                </button>
                             </div>
                         </div>
 
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="bulk-count" style="color: var(--text-main);">
-                                CANTIDAD A AÑADIR (x) *
-                            </label>
-                            <input type="number"
-                                   id="bulk-count"
-                                   name="count"
-                                   class="form-input"
-                                   value="10"
-                                   min="1"
-                                   max="200"
-                                   required
-                                   hx-get="/plants/validate-bulk-keys"
-                                   hx-trigger="input changed delay:150ms, change"
-                                   hx-include="#bulk-plant-form"
-                                   hx-target="#bulk-keys-preview-container"
-                                   hx-swap="innerHTML" />
-                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                Total de ejemplares en el lote
+                        <!-- Panel: Sequential Mode -->
+                        <div id="bulk-seq-panel">
+                            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 12px;">
+                                
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="bulk-prefix" style="color: var(--text-main);">
+                                        PREFIJO / CÓDIGO *
+                                    </label>
+                                    <input type="text"
+                                           id="bulk-prefix"
+                                           name="prefix"
+                                           class="form-input"
+                                           value="K"
+                                           placeholder="Ej: K, A, OB-, 2026-"
+                                           maxlength="15"
+                                           style="text-transform: uppercase; font-weight: 700; color: #ff66cc;"
+                                           oninput="this.value = this.value.toUpperCase(); onBulkInputsChanged();"
+                                           autocomplete="off" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Código base (ej: <code>K</code>, <code>A-</code>)
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label class="form-label" for="bulk-start" style="color: var(--text-main);">
+                                            NÚMERO INICIAL *
+                                        </label>
+                                        <button type="button"
+                                                onclick="suggestNextFreeNumber()"
+                                                class="btn btn-sm btn-green"
+                                                style="padding: 1px 6px; font-size: 9.5px; line-height: 1.2;"
+                                                title="Calcular el siguiente número libre para este prefijo en la BD">
+                                            ⚡ SIGUIENTE
+                                        </button>
+                                    </div>
+                                    <input type="number"
+                                           id="bulk-start"
+                                           name="start_num"
+                                           class="form-input"
+                                           value="1"
+                                           min="1"
+                                           oninput="onBulkInputsChanged();" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Primer número de secuencia
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="bulk-count" style="color: var(--text-main);">
+                                        CANTIDAD (x) *
+                                    </label>
+                                    <input type="number"
+                                           id="bulk-count"
+                                           name="count"
+                                           class="form-input"
+                                           value="10"
+                                           min="1"
+                                           max="200"
+                                           oninput="onBulkInputsChanged();" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Total de plantas a crear
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="bulk-pad-zeros" style="color: var(--text-main);">
+                                        FORMATO DE NÚMERO
+                                    </label>
+                                    <select id="bulk-pad-zeros"
+                                            name="pad_zeros"
+                                            class="form-input"
+                                            onchange="onBulkInputsChanged();">
+                                        <option value="0">Sin ceros (K1, K2...)</option>
+                                        <option value="2" selected>2 dígitos (K01, K02...)</option>
+                                        <option value="3">3 dígitos (K001, K002...)</option>
+                                    </select>
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Relleno de ceros
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
 
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="bulk-start" style="color: var(--text-main);">
-                                NÚMERO INICIAL
+                        <!-- Panel: Manual Keys List Mode -->
+                        <div id="bulk-manual-panel" style="display: none; margin-bottom: 12px;">
+                            <label class="form-label" for="bulk-manual-keys" style="color: var(--text-main);">
+                                LISTA DE CLAVES INDIVIDUALES (SEPARADAS POR COMA, ESPACIO O SALTO DE LÍNEA)
                             </label>
-                            <input type="number"
-                                   id="bulk-start"
-                                   name="start_num"
-                                   class="form-input"
-                                   value="1"
-                                   min="1"
-                                   required
-                                   hx-get="/plants/validate-bulk-keys"
-                                   hx-trigger="input changed delay:150ms, change"
-                                   hx-include="#bulk-plant-form"
-                                   hx-target="#bulk-keys-preview-container"
-                                   hx-swap="innerHTML" />
+                            <textarea id="bulk-manual-keys"
+                                      name="manual_keys"
+                                      class="form-textarea"
+                                      style="height: 65px; font-family: var(--font-mono); font-size: 12px;"
+                                      placeholder="Ej: K-20, K-21, K-22, K-25, A10, A11"
+                                      oninput="onBulkInputsChanged();"></textarea>
                             <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                Primer número de la secuencia
+                                Pegue las etiquetas o códigos exactos de las macetas.
                             </div>
+                        </div>
+
+                        <!-- Conflict Behavior Toggle -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 11.5px; flex-wrap: wrap; gap: 8px;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--peach-orange);">
+                                <input type="checkbox"
+                                       id="bulk-skip-conflicts"
+                                       name="skip_conflicts"
+                                       value="1"
+                                       checked
+                                       onchange="onBulkInputsChanged();" />
+                                <span>Omitir claves que ya existan en la BD (crear solo las disponibles)</span>
+                            </label>
+                            <span id="bulk-quick-hint" style="font-size: 11px; color: var(--text-dim);">
+                                Cálculo y validación en tiempo real (0ms)
+                            </span>
+                        </div>
+
+                        <!-- Dynamic Visual Keys Preview Container -->
+                        <div id="bulk-keys-preview-container">
+                            <!-- Populated instantly by JavaScript -->
+                        </div>
+
+                    </div>
+
+                    <!-- 2. COMMON METADATA & CONDITIONS FORM -->
+                    <datalist id="bulk-species-datalist">{species_options}</datalist>
+                    <datalist id="bulk-locations-datalist">{location_options}</datalist>
+                    <datalist id="bulk-parent-keys-datalist">{parent_options}</datalist>
+
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
+                        <div style="font-size: 12px; font-weight: 700; color: var(--blue-sky); margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <span>🌱 DATOS BOTÁNICOS & CONDICIONES COMUNES PARA EL LOTE</span>
+                            <span style="font-size: 10.5px; color: var(--text-dim); font-weight: normal;">* Campos recomendados</span>
+                        </div>
+
+                        <div class="form-grid">
+                            
+                            <!-- Species Input with quick click suggestions -->
+                            <div class="form-group full">
+                                <label class="form-label" for="bulk-species">ESPECIE BOTÁNICA / TAXONOMÍA *</label>
+                                <input type="text"
+                                       id="bulk-species"
+                                       name="species"
+                                       class="form-input"
+                                       value="Adenium obesum"
+                                       list="bulk-species-datalist"
+                                       placeholder="Ej: Ariocarpus retusus, Adenium obesum, Astrophytum asterias"
+                                       required
+                                       autocomplete="off" />
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; align-items: center;">
+                                    <span style="font-size: 10px; color: var(--text-dim);">Sugerencias rápidas:</span>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-species').value='Adenium obesum'">Adenium obesum</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-species').value='Ariocarpus retusus'">Ariocarpus retusus</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-species').value='Astrophytum asterias'">Astrophytum asterias</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-species').value='Lophophora williamsii'">Lophophora williamsii</button>
+                                    <button type="button" class="btn-today" onclick="document.getElementById('bulk-species').value='Copiapoa cinerea'">Copiapoa cinerea</button>
+                                </div>
+                            </div>
+
+                            <!-- Alias Base + Auto Numbering -->
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-aka">ALIAS BASE (OPCIONAL)</label>
+                                <input type="text"
+                                       id="bulk-aka"
+                                       name="aka"
+                                       class="form-input"
+                                       placeholder="Ej: Lote Semillero, Clon V, Ocaso"
+                                       autocomplete="off" />
+                                <label style="display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 10.5px; color: var(--text-dim); cursor: pointer;">
+                                    <input type="checkbox" name="auto_number_alias" value="1" checked />
+                                    <span>Numerar alias secuencialmente (ej: <code>Lote #1, Lote #2...</code>)</span>
+                                </label>
+                            </div>
+
+                            <!-- Location -->
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-location">UBICACIÓN / BANCO / ESTANTE</label>
+                                <input type="text"
+                                       id="bulk-location"
+                                       name="location"
+                                       class="form-input"
+                                       list="bulk-locations-datalist"
+                                       placeholder="Ej: Invernadero A - Banco 1"
+                                       autocomplete="off" />
+                            </div>
+
+                            <!-- Sanitary Status -->
+                            <div class="form-group">
+                                <label class="form-label">ESTADO SANITARIO & VIGOR *</label>
+                                <div class="status-radio-group">
+                                    <label class="status-radio-label">
+                                        <input type="radio" name="status" value="OK" checked />
+                                        <span class="status-badge status-OK" style="font-size: 11px;">● OK (Saludable)</span>
+                                    </label>
+                                    <label class="status-radio-label">
+                                        <input type="radio" name="status" value="notOK" />
+                                        <span class="status-badge status-notOK" style="font-size: 11px;">● notOK (Cuarentena)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Cultivation Type / Graft -->
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-graft">TIPO DE CULTIVO / INJERTO</label>
+                                <input type="text"
+                                       id="bulk-graft"
+                                       name="graft"
+                                       class="form-input"
+                                       value="Pie franco"
+                                       placeholder="Ej: Pie franco, Hylocereus, Pereskiopsis" />
+                            </div>
+
+                            <!-- Dates: Sowing / Cutting -->
+                            <div class="form-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="form-label" for="bulk-sow">FECHA SIEMBRA / ESQUEJE</label>
+                                    <button type="button"
+                                            class="btn-today"
+                                            onclick="document.getElementById('bulk-sow').value = '{now_str}'">
+                                        [HOY]
+                                    </button>
+                                </div>
+                                <input type="date"
+                                       id="bulk-sow"
+                                       name="sowing_cutting_date"
+                                       class="form-input"
+                                       value="{now_str}" />
+                            </div>
+
+                            <!-- Initial Height -->
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-height">ALTURA INICIAL REGISTRADA</label>
+                                <input type="text"
+                                       id="bulk-height"
+                                       name="height"
+                                       class="form-input"
+                                       value="0 cm ({now_str})"
+                                       placeholder="Ej: 5 cm ({now_str})" />
+                            </div>
+
+                            <!-- Parents / Lineage -->
+                            <div class="form-group full">
+                                <label class="form-label">PROGENITORES / LINAJE (MADRE & PADRE)</label>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <input type="text"
+                                               id="bulk-padre1"
+                                               name="padre1"
+                                               class="form-input"
+                                               list="bulk-parent-keys-datalist"
+                                               placeholder="Madre (o unknown)" />
+                                        <div style="font-size: 9.5px; color: var(--text-dim); margin-top: 2px;">Progenitor 1 (Clave o unknown)</div>
+                                    </div>
+                                    <div>
+                                        <input type="text"
+                                               id="bulk-padre2"
+                                               name="padre2"
+                                               class="form-input"
+                                               list="bulk-parent-keys-datalist"
+                                               placeholder="Padre (o unknown)" />
+                                        <div style="font-size: 9.5px; color: var(--text-dim); margin-top: 2px;">Progenitor 2 (Clave o unknown)</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Treatments and Observations -->
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-fert">FERTILIZACIÓN & TRATAMIENTOS</label>
+                                <textarea id="bulk-fert"
+                                          name="fertilizante"
+                                          class="form-textarea"
+                                          style="height: 52px;"
+                                          placeholder="Pauta de nutrición o abono para el lote..."></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label" for="bulk-comm">OBSERVACIONES & NOTAS</label>
+                                <textarea id="bulk-comm"
+                                          name="comentarios"
+                                          class="form-textarea"
+                                          style="height: 52px;"
+                                          placeholder="Observaciones de cultivo, número de bandeja..."></textarea>
+                            </div>
+
+                            <!-- Optional Shared Photo -->
+                            <div class="form-group full" style="margin-top: 4px; margin-bottom: 0;">
+                                <label class="form-label" for="bulk-photo">FOTOGRAFÍA COMPARTIDA PARA EL LOTE (OPCIONAL)</label>
+                                <input type="file"
+                                       id="bulk-photo"
+                                       name="bulk_photo"
+                                       class="form-input"
+                                       accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" />
+                                <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                    Si adjunta una foto, se guardará y asignará automáticamente como registro inicial de cada ejemplar del lote.
+                                </div>
+                            </div>
+
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: 20px; align-items: center; margin-bottom: 12px; font-size: 11.5px; color: var(--text-sub);">
-                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
-                            <input type="checkbox"
-                                   id="bulk-pad-zeros"
-                                   name="pad_zeros"
-                                   value="1"
-                                   hx-get="/plants/validate-bulk-keys"
-                                   hx-trigger="change"
-                                   hx-include="#bulk-plant-form"
-                                   hx-target="#bulk-keys-preview-container"
-                                   hx-swap="innerHTML" />
-                            <span>Rellenar con ceros (ej: <code>k01, k02...</code>)</span>
-                        </label>
-                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--peach-orange);">
-                            <input type="checkbox"
-                                   id="bulk-skip-conflicts"
-                                   name="skip_conflicts"
-                                   value="1"
-                                   checked
-                                   hx-get="/plants/validate-bulk-keys"
-                                   hx-trigger="change"
-                                   hx-include="#bulk-plant-form"
-                                   hx-target="#bulk-keys-preview-container"
-                                   hx-swap="innerHTML" />
-                            <span>Omitir claves que ya existan en la BD (crear solo las disponibles)</span>
-                        </label>
-                    </div>
-
-                    <!-- Live Validation Container -->
-                    <div id="bulk-keys-preview-container">
-                        {initial_preview}
-                    </div>
                 </div>
 
-                <!-- 2. COMMON METADATA ACCORDION / FORM -->
-                <datalist id="existing-plant-keys">
-                    {keys_datalist}
-                </datalist>
-
-                <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
-                    <div style="font-size: 12px; font-weight: 700; color: var(--blue-sky); margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px;">
-                        🌱 DATOS Y CONDICIONES COMUNES PARA TODOS LOS EJEMPLARES
+                <!-- STICKY FOOTER ACTIONS -->
+                <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button"
+                                class="btn"
+                                hx-get="/modal/close"
+                                hx-target="#modal-container"
+                                hx-swap="innerHTML">
+                            CANCELAR [ESC]
+                        </button>
+                        <span id="bulk-submit-spinner" class="htmx-indicator" style="color: var(--green-sage); font-size: 11.5px; font-weight: bold;">
+                            ⏳ [REGISTRANDO LOTE EN BASE DE DATOS...]
+                        </span>
                     </div>
 
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-species">ESPECIE BOTÁNICA / TAXONOMÍA *</label>
-                            <input type="text"
-                                   id="bulk-species"
-                                   name="species"
-                                   class="form-input"
-                                   value="Adenium obesum"
-                                   placeholder="Ej: Ariocarpus retusus, Adenium obesum"
-                                   required
-                                   autocomplete="off" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-aka">ALIAS BASE (OPCIONAL)</label>
-                            <input type="text"
-                                   id="bulk-aka"
-                                   name="aka"
-                                   class="form-input"
-                                   placeholder="Ej: Lote Semillero, Clon V, Ocaso"
-                                   autocomplete="off" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-location">UBICACIÓN / BANCO / ESTANTE</label>
-                            <input type="text"
-                                   id="bulk-location"
-                                   name="location"
-                                   class="form-input"
-                                   placeholder="Ej: Invernadero A - Banco 1"
-                                   autocomplete="off" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">ESTADO SANITARIO & VIGOR *</label>
-                            <div class="status-radio-group">
-                                <label class="status-radio-label">
-                                    <input type="radio" name="status" value="OK" checked />
-                                    <span class="status-badge status-OK" style="font-size: 11px;">● OK</span>
-                                </label>
-                                <label class="status-radio-label">
-                                    <input type="radio" name="status" value="notOK" />
-                                    <span class="status-badge status-notOK" style="font-size: 11px;">● notOK</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-sow">FECHA SIEMBRA / ESQUEJE</label>
-                            <input type="date"
-                                   id="bulk-sow"
-                                   name="sowing_cutting_date"
-                                   class="form-input"
-                                   value="{now_str}" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-height">ALTURA INICIAL REGISTRADA</label>
-                            <input type="text"
-                                   id="bulk-height"
-                                   name="height"
-                                   class="form-input"
-                                   value="0 cm ({now_str})"
-                                   placeholder="Ej: 5 cm ({now_str})" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label" for="bulk-graft">TIPO DE CULTIVO / INJERTO</label>
-                            <input type="text"
-                                   id="bulk-graft"
-                                   name="graft"
-                                   class="form-input"
-                                   value="Pie franco"
-                                   placeholder="Ej: Pie franco, Hylocereus" />
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">PROGENITORES (LINAJE / PADRES)</label>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <input type="text"
-                                       id="bulk-padre1"
-                                       name="padre1"
-                                       class="form-input"
-                                       list="existing-plant-keys"
-                                       placeholder="Madre (o unknown)" />
-                                <input type="text"
-                                       id="bulk-padre2"
-                                       name="padre2"
-                                       class="form-input"
-                                       list="existing-plant-keys"
-                                       placeholder="Padre (o unknown)" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="bulk-fert">FERTILIZACIÓN & TRATAMIENTOS</label>
-                            <textarea id="bulk-fert"
-                                      name="fertilizante"
-                                      class="form-textarea"
-                                      style="height: 55px;"
-                                      placeholder="Pauta de abono compartida para el lote..."></textarea>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label class="form-label" for="bulk-comm">OBSERVACIONES & NOTAS</label>
-                            <textarea id="bulk-comm"
-                                      name="comentarios"
-                                      class="form-textarea"
-                                      style="height: 55px;"
-                                      placeholder="Notas del lote o semillero..."></textarea>
-                        </div>
-                    </div>
-
-                    <div class="form-group" style="margin-top: 12px; margin-bottom: 0;">
-                        <label class="form-label" for="bulk-photo">FOTOGRAFÍA COMPARTIDA PARA EL LOTE (OPCIONAL)</label>
-                        <input type="file"
-                               id="bulk-photo"
-                               name="bulk_photo"
-                               class="form-input"
-                               accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" />
-                        <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                            Si selecciona una imagen, se asignará automáticamente como fotografía inicial de todos los ejemplares creados.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 3. FOOTER ACTIONS -->
-                <div class="modal-actions" style="margin-top: 4px;">
-                    <button type="button"
-                            class="btn"
-                            onclick="document.getElementById('modal-container').innerHTML = '';">
-                        CANCELAR
-                    </button>
                     <button type="submit"
                             id="bulk-submit-btn"
                             class="btn btn-green"
-                            style="font-weight: 700; padding: 8px 20px;">
+                            style="font-weight: 700; padding: 9px 24px; font-size: 12.5px;">
                         ➕ CREAR LOTE DE 10 EJEMPLARES
                     </button>
                 </div>
+
             </form>
         </div>
     </div>
+
+    <!-- CLIENT-SIDE FAST BATCH GENERATOR SCRIPT -->
+    <script>
+        window.EXISTING_PLANT_KEYS = new Set({existing_keys_json});
+
+        function setBulkKeyMode(mode) {{
+            var hid = document.getElementById('bulk-key-mode');
+            var pSeq = document.getElementById('bulk-seq-panel');
+            var pMan = document.getElementById('bulk-manual-panel');
+            var bSeq = document.getElementById('tab-btn-seq');
+            var bMan = document.getElementById('tab-btn-manual');
+            if (hid) hid.value = mode;
+
+            if (mode === 'manual') {{
+                if (pSeq) pSeq.style.display = 'none';
+                if (pMan) pMan.style.display = 'block';
+                if (bSeq) bSeq.classList.remove('active');
+                if (bMan) bMan.classList.add('active');
+            }} else {{
+                if (pSeq) pSeq.style.display = 'block';
+                if (pMan) pMan.style.display = 'none';
+                if (bSeq) bSeq.classList.add('active');
+                if (bMan) bMan.classList.remove('active');
+            }}
+            onBulkInputsChanged();
+        }}
+
+        function suggestNextFreeNumber() {{
+            var pfxEl = document.getElementById('bulk-prefix');
+            var startEl = document.getElementById('bulk-start');
+            if (!pfxEl || !startEl) return;
+            var pfx = (pfxEl.value || '').trim().toUpperCase();
+            var maxNum = 0;
+            var reg = new RegExp('^' + pfx.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&') + '[-_]?(\\\\d+)$', 'i');
+            window.EXISTING_PLANT_KEYS.forEach(function(k) {{
+                var m = k.match(reg);
+                if (m) {{
+                    var n = parseInt(m[1], 10);
+                    if (!isNaN(n) && n > maxNum) maxNum = n;
+                }}
+            }});
+            startEl.value = String(maxNum + 1);
+            onBulkInputsChanged();
+        }}
+
+        function onBulkInputsChanged() {{
+            var mode = document.getElementById('bulk-key-mode')?.value || 'seq';
+            var skipEl = document.getElementById('bulk-skip-conflicts');
+            var skipConflicts = skipEl ? skipEl.checked : true;
+            var generatedKeys = [];
+
+            if (mode === 'manual') {{
+                var manText = document.getElementById('bulk-manual-keys')?.value || '';
+                var parts = manText.split(/[,\\n\\s]+/);
+                parts.forEach(function(p) {{
+                    var clean = p.replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase().trim();
+                    if (clean && generatedKeys.indexOf(clean) === -1) {{
+                        generatedKeys.push(clean);
+                    }}
+                }});
+            }} else {{
+                var pfx = (document.getElementById('bulk-prefix')?.value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase();
+                var startNum = parseInt(document.getElementById('bulk-start')?.value || '1', 10);
+                if (isNaN(startNum) || startNum < 1) startNum = 1;
+                var count = parseInt(document.getElementById('bulk-count')?.value || '10', 10);
+                if (isNaN(count) || count < 1) count = 1;
+                if (count > 200) count = 200;
+                var padMode = parseInt(document.getElementById('bulk-pad-zeros')?.value || '2', 10);
+
+                for (var i = startNum; i < startNum + count; i++) {{
+                    var sNum = String(i);
+                    if (padMode === 2 && sNum.length < 2) sNum = '0' + sNum;
+                    else if (padMode === 3) {{
+                        while (sNum.length < 3) sNum = '0' + sNum;
+                    }}
+                    generatedKeys.push(pfx + sNum);
+                }}
+            }}
+
+            var avail = [];
+            var conf = [];
+            generatedKeys.forEach(function(k) {{
+                if (window.EXISTING_PLANT_KEYS.has(k)) {{
+                    conf.push(k);
+                }} else {{
+                    avail.push(k);
+                }}
+            }});
+
+            var total = generatedKeys.length;
+            var totalAvail = avail.length;
+            var totalConf = conf.length;
+
+            // Render Preview DOM
+            var container = document.getElementById('bulk-keys-preview-container');
+            if (container) {{
+                var bannerHtml = '';
+                if (total === 0) {{
+                    bannerHtml = '<div style="color: var(--text-dim); font-size: 11px;">Indique un prefijo o ingrese claves manuales.</div>';
+                }} else if (totalConf === 0) {{
+                    bannerHtml = '<div style="background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--green-sage); display: flex; align-items: center; gap: 8px;"><span>✓</span><div><strong>' + total + ' claves listas y disponibles:</strong> Cero conflictos en la BD.</div></div>';
+                }} else if (skipConflicts) {{
+                    bannerHtml = '<div style="background: rgba(234, 179, 8, 0.12); border: 1px solid var(--peach-orange); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--peach-orange); display: flex; align-items: center; gap: 8px;"><span>⚠️</span><div><strong>' + totalConf + ' clave(s) en uso:</strong> Se registrarán solo las <strong>' + totalAvail + ' claves disponibles</strong> (omitiendo existentes).</div></div>';
+                }} else {{
+                    bannerHtml = '<div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 7px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson); display: flex; align-items: center; gap: 8px;"><span>✕</span><div><strong>CONFLICTO:</strong> ' + totalConf + ' clave(s) ya existen. Marque "Omitir existentes" o cambie el número inicial.</div></div>';
+                }}
+
+                var chipsHtml = '';
+                var confSet = new Set(conf);
+                generatedKeys.forEach(function(k) {{
+                    if (confSet.has(k)) {{
+                        chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px; text-decoration: line-through;" title="Ya existe en la BD">' + k + ' ✕</span> ';
+                    }} else {{
+                        chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 3px; background: rgba(34, 197, 94, 0.12); border: 1px solid var(--green-sage); color: var(--green-sage); font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 3px;" title="Disponible para registro">' + k + ' ✓</span> ';
+                    }}
+                }});
+
+                container.innerHTML = bannerHtml +
+                    '<div style="font-size: 11px; color: var(--text-dim); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">' +
+                    '<span>PREVISUALIZACIÓN DE CLAVES (' + total + '):</span>' +
+                    '<span style="color: var(--text-main); font-weight: 700;">🟢 ' + totalAvail + ' DISPONIBLES · 🔴 ' + totalConf + ' EN USO</span>' +
+                    '</div>' +
+                    '<div style="display: flex; flex-wrap: wrap; gap: 5px; max-height: 110px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 8px;">' +
+                    (chipsHtml || '<span style="color: var(--text-dim); font-size: 11px;">Indique claves válidas.</span>') +
+                    '</div>';
+            }}
+
+            var submitBtn = document.getElementById('bulk-submit-btn');
+            if (submitBtn) {{
+                var countToCreate = skipConflicts ? totalAvail : (totalConf > 0 ? 0 : total);
+                var isBlocked = (countToCreate === 0);
+                submitBtn.disabled = isBlocked;
+                submitBtn.style.opacity = isBlocked ? '0.45' : '1';
+                submitBtn.style.cursor = isBlocked ? 'not-allowed' : 'pointer';
+                submitBtn.innerHTML = '➕ CREAR LOTE DE ' + countToCreate + ' EJEMPLARES';
+            }}
+        }}
+
+        // Run initial calculation right away
+        setTimeout(onBulkInputsChanged, 30);
+    </script>
     """
+
+
+def render_bulk_delete_modal() -> str:
+    """Renders the comprehensive Bulk Specimen Removal and Photo Purge modal."""
+    all_plants = db.get_plants()
+    plants_summary = [
+        {
+            "name": p["name"],
+            "species": p.get("species", ""),
+            "aka": p.get("aka", ""),
+            "status": db.normalize_status(p.get("status")),
+            "location": p.get("location", "") or "",
+            "photos_count": len(p.get("photos") or [])
+        }
+        for p in all_plants
+    ]
+    plants_json = json.dumps(plants_summary)
+    distinct_locations = db.get_distinct_locations()
+    loc_options = "".join(f'<option value="{html.escape(l)}">{html.escape(l)}</option>' for l in distinct_locations)
+
+    return f"""
+    <div class="modal-overlay" id="bulk-delete-modal" role="dialog" aria-modal="true" style="display: flex;">
+        <div class="modal-dialog" style="max-width: 960px; width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+            
+            <!-- MODAL HEADER -->
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span class="modal-title" style="color: var(--red-crimson);">
+                        🗑 [BAJA MASIVA DE EJEMPLARES // BATCH REMOVAL]
+                    </span>
+                    <span style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">
+                        PURGA SELECTIVA & ELIMINACIÓN DE ARCHIVOS EN DISCO
+                    </span>
+                </div>
+                <button type="button"
+                        class="modal-close-btn"
+                        hx-get="/modal/close"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Cerrar ventana [ESC]"
+                        aria-label="Cerrar modal">
+                    ✕
+                </button>
+            </div>
+
+            <!-- MODAL FORM -->
+            <form id="bulk-delete-form"
+                  hx-post="/plants/bulk-delete-modal-action"
+                  hx-target="#plant-container"
+                  hx-swap="innerHTML"
+                  style="display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden;">
+
+                <input type="hidden" id="bulk-del-mode" name="del_mode" value="range" />
+                <input type="hidden" id="bulk-del-keys-csv" name="keys_csv" value="" />
+
+                <!-- SCROLLABLE BODY -->
+                <div class="modal-body" style="padding: 16px 20px 20px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                    
+                    <!-- 1. SELECTION METHOD SELECTOR -->
+                    <div style="background: var(--bg-mantle); border: 1px solid var(--red-crimson); border-radius: 6px; padding: 14px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; font-weight: 700; color: var(--red-crimson); letter-spacing: 0.5px;">
+                                    ⚙ CRITERIO DE SELECCIÓN PARA BAJA MASIVA
+                                </span>
+                            </div>
+
+                            <!-- Mode Switcher -->
+                            <div style="display: flex; gap: 4px; background: var(--bg-crust); padding: 2px; border-radius: 4px; border: 1px solid var(--border-dim);">
+                                <button type="button"
+                                        id="del-tab-range"
+                                        class="inv-tab-btn active"
+                                        onclick="setBulkDelMode('range')"
+                                        style="font-size: 10.5px; padding: 3px 10px;">
+                                    ● RANGO / PREFIJO
+                                </button>
+                                <button type="button"
+                                        id="del-tab-manual"
+                                        class="inv-tab-btn"
+                                        onclick="setBulkDelMode('manual')"
+                                        style="font-size: 10.5px; padding: 3px 10px;">
+                                    ● PEGAR LISTA MANUAL
+                                </button>
+                                <button type="button"
+                                        id="del-tab-filter"
+                                        class="inv-tab-btn"
+                                        onclick="setBulkDelMode('filter')"
+                                        style="font-size: 10.5px; padding: 3px 10px;">
+                                    ● FILTRO POR CRITERIO
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Panel 1: Range & Prefix Mode -->
+                        <div id="del-panel-range">
+                            <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1.2fr; gap: 12px; margin-bottom: 8px;">
+                                
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-prefix" style="color: var(--text-main);">
+                                        PREFIJO / CÓDIGO
+                                    </label>
+                                    <input type="text"
+                                           id="del-prefix"
+                                           class="form-input"
+                                           value="K"
+                                           placeholder="Ej: K, A, TEST"
+                                           maxlength="15"
+                                           style="text-transform: uppercase; font-weight: 700; color: #ff66cc;"
+                                           oninput="this.value = this.value.toUpperCase(); onBulkDelInputsChanged();"
+                                           autocomplete="off" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Código base de la secuencia
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-start" style="color: var(--text-main);">
+                                        DESDE NÚMERO
+                                    </label>
+                                    <input type="number"
+                                           id="del-start"
+                                           class="form-input"
+                                           value="1"
+                                           min="1"
+                                           oninput="onBulkDelInputsChanged();" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Número inicial del rango
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-end" style="color: var(--text-main);">
+                                        HASTA NÚMERO
+                                    </label>
+                                    <input type="number"
+                                           id="del-end"
+                                           class="form-input"
+                                           value="10"
+                                           min="1"
+                                           oninput="onBulkDelInputsChanged();" />
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Número final del rango
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-pad-zeros" style="color: var(--text-main);">
+                                        FORMATO DE NÚMERO
+                                    </label>
+                                    <select id="del-pad-zeros"
+                                            class="form-input"
+                                            onchange="onBulkDelInputsChanged();">
+                                        <option value="both" selected>Flexible (K1 y K01)</option>
+                                        <option value="0">Sin ceros (K1, K2...)</option>
+                                        <option value="2">2 dígitos (K01, K02...)</option>
+                                        <option value="3">3 dígitos (K001, K002...)</option>
+                                    </select>
+                                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                        Relleno de ceros
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <!-- Panel 2: Manual Textarea Mode -->
+                        <div id="del-panel-manual" style="display: none; margin-bottom: 8px;">
+                            <label class="form-label" for="del-manual-keys" style="color: var(--text-main);">
+                                PEGAR CLAVES A ELIMINAR (SEPARADAS POR COMA, ESPACIO O SALTO DE LÍNEA)
+                            </label>
+                            <textarea id="del-manual-keys"
+                                      class="form-textarea"
+                                      style="height: 65px; font-family: var(--font-mono); font-size: 12px;"
+                                      placeholder="Ej: K01, K02, K03, A10, B-02"
+                                      oninput="onBulkDelInputsChanged();"></textarea>
+                            <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
+                                Ingrese las claves exactas de los ejemplares a dar de baja.
+                            </div>
+                        </div>
+
+                        <!-- Panel 3: Filter by Criteria Mode -->
+                        <div id="del-panel-filter" style="display: none; margin-bottom: 8px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 12px;">
+                                
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-filter-status">ESTADO SANITARIO</label>
+                                    <select id="del-filter-status" class="form-input" onchange="onBulkDelInputsChanged();">
+                                        <option value="ALL">Cualquier estado</option>
+                                        <option value="notOK">Solo en cuarentena (● notOK)</option>
+                                        <option value="OK">Solo saludables (● OK)</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-filter-location">UBICACIÓN / BANCO</label>
+                                    <select id="del-filter-location" class="form-input" onchange="onBulkDelInputsChanged();">
+                                        <option value="ALL">Cualquier ubicación</option>
+                                        {loc_options}
+                                    </select>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label class="form-label" for="del-filter-photos">FOTOGRAFÍAS</label>
+                                    <select id="del-filter-photos" class="form-input" onchange="onBulkDelInputsChanged();">
+                                        <option value="ALL">Con o sin fotos</option>
+                                        <option value="NO_PHOTOS">Solo sin fotografías</option>
+                                        <option value="WITH_PHOTOS">Solo con fotografías</option>
+                                    </select>
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- 2. LIVE SELECTION PREVIEW & IMPACT SUMMARY -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px dashed var(--border-dim); padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <span style="font-size: 12px; font-weight: 700; color: var(--peach-orange);">
+                                👁 PREVISUALIZACIÓN DE EJEMPLARES A ELIMINAR
+                            </span>
+                            <span id="del-impact-badge" style="font-size: 11px; font-weight: 700; color: var(--red-crimson);">
+                                0 ejemplares seleccionados
+                            </span>
+                        </div>
+
+                        <!-- Candidates Container -->
+                        <div id="bulk-del-preview-container">
+                            <!-- Populated dynamically by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- 3. SAFETY CONFIRMATION CARD -->
+                    <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid var(--red-crimson); border-radius: 6px; padding: 12px 16px;">
+                        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none;">
+                            <input type="checkbox"
+                                   id="bulk-del-confirm-checkbox"
+                                   style="margin-top: 3px; accent-color: var(--red-crimson); transform: scale(1.15);"
+                                   onchange="onBulkDelInputsChanged();" />
+                            <div style="font-size: 12px; color: var(--text-main); line-height: 1.4;">
+                                <strong style="color: var(--red-crimson);">CONFIRMACIÓN OBLIGATORIA DE PURGA DEFINITIVA:</strong><br />
+                                Entiendo que esta operación eliminará de forma irreversible los registros seleccionados en la base de datos SQLite y purgará permanentemente sus archivos fotográficos del disco.
+                            </div>
+                        </label>
+                    </div>
+
+                </div>
+
+                <!-- STICKY FOOTER ACTIONS -->
+                <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button"
+                                class="btn"
+                                hx-get="/modal/close"
+                                hx-target="#modal-container"
+                                hx-swap="innerHTML">
+                            CANCELAR [ESC]
+                        </button>
+                        <span id="bulk-del-spinner" class="htmx-indicator" style="color: var(--red-crimson); font-size: 11.5px; font-weight: bold;">
+                            ⏳ [ELIMINANDO Y PURGANDO ARCHIVOS...]
+                        </span>
+                    </div>
+
+                    <button type="submit"
+                            id="bulk-del-submit-btn"
+                            class="btn btn-red"
+                            style="font-weight: 700; padding: 9px 24px; font-size: 12.5px;"
+                            disabled>
+                        🗑 ELIMINAR 0 EJEMPLARES
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <!-- CLIENT-SIDE BATCH REMOVAL SCRIPT -->
+    <script>
+        window.ALL_CATALOG_PLANTS = {plants_json};
+
+        function setBulkDelMode(mode) {{
+            var hid = document.getElementById('bulk-del-mode');
+            var pRange = document.getElementById('del-panel-range');
+            var pMan = document.getElementById('del-panel-manual');
+            var pFilt = document.getElementById('del-panel-filter');
+
+            var bRange = document.getElementById('del-tab-range');
+            var bMan = document.getElementById('del-tab-manual');
+            var bFilt = document.getElementById('del-tab-filter');
+
+            if (hid) hid.value = mode;
+
+            if (pRange) pRange.style.display = (mode === 'range') ? 'block' : 'none';
+            if (pMan) pMan.style.display = (mode === 'manual') ? 'block' : 'none';
+            if (pFilt) pFilt.style.display = (mode === 'filter') ? 'block' : 'none';
+
+            if (bRange) bRange.classList.toggle('active', mode === 'range');
+            if (bMan) bMan.classList.toggle('active', mode === 'manual');
+            if (bFilt) bFilt.classList.toggle('active', mode === 'filter');
+
+            onBulkDelInputsChanged();
+        }}
+
+        function onBulkDelInputsChanged() {{
+            var mode = document.getElementById('bulk-del-mode')?.value || 'range';
+            var matched = [];
+
+            if (mode === 'range') {{
+                var pfx = (document.getElementById('del-prefix')?.value || '').trim().toUpperCase();
+                var s = parseInt(document.getElementById('del-start')?.value || '1', 10);
+                var e = parseInt(document.getElementById('del-end')?.value || '10', 10);
+                var padMode = document.getElementById('del-pad-zeros')?.value || 'both';
+
+                if (!isNaN(s) && !isNaN(e) && s <= e) {{
+                    var targetKeySet = new Set();
+                    for (var i = s; i <= e; i++) {{
+                        var sNum = String(i);
+                        if (padMode === 'both') {{
+                            targetKeySet.add(pfx + sNum);
+                            targetKeySet.add(pfx + (sNum.length < 2 ? '0' + sNum : sNum));
+                            targetKeySet.add(pfx + '-' + sNum);
+                            targetKeySet.add(pfx + '-' + (sNum.length < 2 ? '0' + sNum : sNum));
+                        }} else if (padMode === '2') {{
+                            targetKeySet.add(pfx + (sNum.length < 2 ? '0' + sNum : sNum));
+                        }} else if (padMode === '3') {{
+                            while (sNum.length < 3) sNum = '0' + sNum;
+                            targetKeySet.add(pfx + sNum);
+                        }} else {{
+                            targetKeySet.add(pfx + sNum);
+                        }}
+                    }}
+
+                    window.ALL_CATALOG_PLANTS.forEach(function(p) {{
+                        if (targetKeySet.has(p.name.toUpperCase())) {{
+                            matched.push(p);
+                        }}
+                    }});
+                }}
+            }} else if (mode === 'manual') {{
+                var txt = (document.getElementById('del-manual-keys')?.value || '').trim();
+                var rawParts = txt.split(/[,\\n\\s]+/);
+                var targetSet = new Set();
+                rawParts.forEach(function(item) {{
+                    var clean = item.replace(/[^a-zA-Z0-9_-]/g, '').toUpperCase().trim();
+                    if (clean) targetSet.add(clean);
+                }});
+
+                window.ALL_CATALOG_PLANTS.forEach(function(p) {{
+                    if (targetSet.has(p.name.toUpperCase())) {{
+                        matched.push(p);
+                    }}
+                }});
+            }} else if (mode === 'filter') {{
+                var st = document.getElementById('del-filter-status')?.value || 'ALL';
+                var loc = document.getElementById('del-filter-location')?.value || 'ALL';
+                var ph = document.getElementById('del-filter-photos')?.value || 'ALL';
+
+                window.ALL_CATALOG_PLANTS.forEach(function(p) {{
+                    var stOk = (st === 'ALL') || (p.status === st);
+                    var locOk = (loc === 'ALL') || (p.location === loc);
+                    var phOk = true;
+                    if (ph === 'NO_PHOTOS') phOk = (p.photos_count === 0);
+                    else if (ph === 'WITH_PHOTOS') phOk = (p.photos_count > 0);
+
+                    if (stOk && locOk && phOk) {{
+                        matched.push(p);
+                    }}
+                }});
+            }}
+
+            // Calculate impact
+            var totalPhotos = 0;
+            var keysList = [];
+            var chipsHtml = '';
+
+            matched.forEach(function(p) {{
+                totalPhotos += (p.photos_count || 0);
+                keysList.push(p.name);
+                var akaSpan = p.aka ? ' <span style="color: var(--peach-orange);">"' + p.aka + '"</span>' : '';
+                var photoTag = (p.photos_count > 0) ? ' · 📸 ' + p.photos_count : '';
+                chipsHtml += '<span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.15); border: 1px solid var(--red-crimson); color: var(--red-crimson); font-family: var(--font-mono); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 3px;" title="' + p.species + '">' +
+                    p.name + akaSpan + photoTag + '</span> ';
+            }});
+
+            var keysCsvInput = document.getElementById('bulk-del-keys-csv');
+            if (keysCsvInput) keysCsvInput.value = keysList.join(',');
+
+            var badgeEl = document.getElementById('del-impact-badge');
+            if (badgeEl) {{
+                badgeEl.textContent = matched.length + ' ejemplares identificados · ' + totalPhotos + ' fotos en disco';
+            }}
+
+            var container = document.getElementById('bulk-del-preview-container');
+            if (container) {{
+                if (matched.length === 0) {{
+                    container.innerHTML = '<div style="color: var(--text-dim); font-size: 11.5px; padding: 12px; text-align: center; border: 1px dashed var(--border-dim); border-radius: 4px;">' +
+                        'No hay ejemplares en la base de datos que coincidan con los criterios seleccionados.' +
+                        '</div>';
+                }} else {{
+                    container.innerHTML = '<div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 140px; overflow-y: auto; background: var(--bg-crust); border: 1px solid var(--border-dim); border-radius: 4px; padding: 10px;">' +
+                        chipsHtml +
+                        '</div>';
+                }}
+            }}
+
+            var chkConfirm = document.getElementById('bulk-del-confirm-checkbox');
+            var isConfirmed = chkConfirm ? chkConfirm.checked : false;
+
+            var submitBtn = document.getElementById('bulk-del-submit-btn');
+            if (submitBtn) {{
+                var canSubmit = (matched.length > 0 && isConfirmed);
+                submitBtn.disabled = !canSubmit;
+                submitBtn.style.opacity = canSubmit ? '1' : '0.45';
+                submitBtn.style.cursor = canSubmit ? 'pointer' : 'not-allowed';
+                submitBtn.innerHTML = '🗑 ELIMINAR LOTE DE ' + matched.length + ' EJEMPLARES';
+            }}
+        }}
+
+        // Initialize calculation
+        setTimeout(onBulkDelInputsChanged, 30);
+    </script>
+    """
+
+
+def render_import_db_modal(error_msg: Optional[str] = None, success_info: Optional[Dict[str, Any]] = None) -> str:
+    """Renders the Import / Restore Previous Database modal with rigorous validation and safety guarantees."""
+
+    error_banner = ""
+    if error_msg:
+        error_banner = f"""
+        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid var(--red-crimson); border-radius: 6px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px;">
+            <div style="color: var(--red-crimson); font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                <span>⚠️ RECHAZADO POR SEGURIDAD E INCOMPATIBILIDAD</span>
+            </div>
+            <div style="color: var(--text-main); font-size: 12px; line-height: 1.4;">
+                {html.escape(error_msg)}
+            </div>
+            <div style="color: var(--text-dim); font-size: 11px; margin-top: 4px; border-top: 1px dashed rgba(239, 68, 68, 0.3); padding-top: 6px;">
+                Su catálogo actual NO ha sido modificado y se mantiene 100% íntegro y protegido.
+            </div>
+        </div>
+        """
+
+    if success_info:
+        return f"""
+        <div class="modal-overlay" id="import-db-modal" role="dialog" aria-modal="true" style="display: flex;">
+            <div class="modal-dialog" style="max-width: 680px; width: 95vw; display: flex; flex-direction: column;">
+                
+                <!-- HEADER -->
+                <div class="modal-header">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="modal-title" style="color: var(--green-sage);">
+                            📥 [IMPORTACIÓN DE BASE DE DATOS COMPLETADA]
+                        </span>
+                    </div>
+                    <button type="button"
+                            class="modal-close-btn"
+                            hx-get="/modal/close"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML"
+                            title="Cerrar ventana [ESC]"
+                            aria-label="Cerrar modal">
+                        ✕
+                    </button>
+                </div>
+
+                <!-- BODY -->
+                <div class="modal-body" style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+                    <div style="background: rgba(166, 227, 161, 0.12); border: 1px solid var(--green-sage); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+                        <div style="color: var(--green-sage); font-weight: 700; font-size: 14px;">
+                            ✓ BASE DE DATOS VALIDADA, MIGRADA E IMPORTADA CON ÉXITO
+                        </div>
+                        <div style="color: var(--text-main); font-size: 12.5px; line-height: 1.5;">
+                            El archivo SQLite ha superado todas las pruebas criptográficas y de integridad (PRAGMA integrity_check). Sus índices y columnas han sido sincronizados perfectamente con la versión actual del sistema.
+                        </div>
+                    </div>
+
+                    <!-- METRICS GRID -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px 14px;">
+                            <div style="font-size: 20px; font-weight: 700; color: var(--green-sage); font-family: var(--font-mono);">
+                                {success_info['total_plants']}
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">
+                                Ejemplares botánicos importados
+                            </div>
+                        </div>
+
+                        <div style="background: var(--bg-mantle); border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px 14px;">
+                            <div style="font-size: 20px; font-weight: 700; color: var(--blue-sky); font-family: var(--font-mono);">
+                                {success_info['total_photos_referenced']}
+                            </div>
+                            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">
+                                Referencias fotográficas asociadas
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SAFETY ROLLBACK NOTICE -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 4px; padding: 12px 14px; font-size: 11.5px; color: var(--text-sub); display: flex; flex-direction: column; gap: 4px;">
+                        <span style="font-weight: 700; color: var(--peach-orange);">🛡️ SNAPSHOT DE ROLLBACK PREVENTIVO GENERADO:</span>
+                        <span style="font-family: var(--font-mono); color: var(--text-main); word-break: break-all;">
+                            DB/backups/{html.escape(success_info['safety_backup'])}
+                        </span>
+                        <span style="font-size: 10.5px; color: var(--text-dim);">
+                            Si en cualquier momento desea revertir este cambio, su snapshot previo se encuentra seguro y disponible en disco (retención de hasta 20 rollbacks).
+                        </span>
+                    </div>
+                </div>
+
+                <!-- FOOTER -->
+                <div class="modal-footer-sticky" style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button"
+                            class="btn"
+                            hx-get="/modal/close"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML">
+                        ✕ CERRAR [ESC]
+                    </button>
+                    <button type="button"
+                            class="btn btn-green"
+                            hx-get="/admin/modal"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML"
+                            style="font-weight: 700;">
+                        ⚙ IR AL PANEL DE ADMINISTRACIÓN
+                    </button>
+                </div>
+
+            </div>
+        </div>
+        """
+
+    return f"""
+    <div class="modal-overlay" id="import-db-modal" role="dialog" aria-modal="true" style="display: flex;">
+        <div class="modal-dialog" style="max-width: 680px; width: 95vw; display: flex; flex-direction: column;">
+            
+            <!-- HEADER -->
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="modal-title" style="color: var(--peach-orange);">
+                        📥 [IMPORTAR / RESTAURAR BASE DE DATOS SQLITE]
+                    </span>
+                </div>
+                <button type="button"
+                        class="modal-close-btn"
+                        hx-get="/modal/close"
+                        hx-target="#modal-container"
+                        hx-swap="innerHTML"
+                        title="Cerrar ventana [ESC]"
+                        aria-label="Cerrar modal">
+                    ✕
+                </button>
+            </div>
+
+            <!-- FORM -->
+            <form id="import-db-form"
+                  hx-post="/admin/import-db"
+                  hx-encoding="multipart/form-data"
+                  hx-target="#modal-container"
+                  hx-swap="innerHTML"
+                  hx-indicator="#import-db-spinner"
+                  style="display: flex; flex-direction: column; flex: 1 1 auto; overflow: hidden;">
+
+                <!-- BODY -->
+                <div class="modal-body" style="padding: 20px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+                    
+                    {error_banner}
+
+                    <!-- INSTRUCTIONS & DESCRIPTION -->
+                    <div style="font-size: 12.5px; color: var(--text-sub); line-height: 1.5;">
+                        Esta herramienta le permite restaurar una copia de seguridad previa de Plantation o importar un archivo de base de datos SQLite (<code style="color: var(--peach-orange); font-family: var(--font-mono);">.db</code>).
+                    </div>
+
+                    <!-- FILE INPUT DROPZONE -->
+                    <div style="background: var(--bg-mantle); border: 2px dashed var(--border-dim); border-radius: 6px; padding: 22px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+                        <div style="font-size: 28px;">🗄️</div>
+                        <div style="font-size: 13px; font-weight: 700; color: var(--text-main);">
+                            SELECCIONE EL ARCHIVO SQLITE (.DB / .SQLITE)
+                        </div>
+                        <input type="file"
+                               name="db_file"
+                               id="import-db-file-input"
+                               accept=".db,.sqlite,.sqlite3"
+                               required
+                               class="form-input"
+                               style="max-width: 380px; cursor: pointer;"
+                               onchange="checkImportReady();" />
+                        <div style="font-size: 10.5px; color: var(--text-dim);">
+                            Archivos admitidos: <strong>plantation.db</strong>, copias de seguridad de <strong>DB/backups/</strong> o exports SQLite compatibles.
+                        </div>
+                    </div>
+
+                    <!-- SECURITY & COMPATIBILITY CHECKLIST -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px 16px;">
+                        <div style="font-size: 11px; font-weight: 700; color: var(--blue-sky); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.5px;">
+                            🛡️ GARANTÍAS DE COMPATIBILIDAD Y SEGURIDAD AUTOMÁTICAS:
+                        </div>
+                        <ul style="margin: 0; padding-left: 18px; font-size: 11.5px; color: var(--text-sub); line-height: 1.6;">
+                            <li><strong>Verificación de cabecera:</strong> Comprobación criptográfica del número mágico SQLite 3.</li>
+                            <li><strong>Integridad física:</strong> Ejecución de <code style="font-family: var(--font-mono); color: var(--green-sage);">PRAGMA integrity_check</code> para descartar corrupción b-tree.</li>
+                            <li><strong>Compatibilidad de esquema:</strong> Inspección de la tabla <code style="font-family: var(--font-mono); color: var(--green-sage);">plants</code> y sus campos obligatorios.</li>
+                            <li><strong>Migración retrocompatible:</strong> Incorporación automática de columnas modernas ausentes en versiones anteriores.</li>
+                            <li><strong>Rollback preventivo:</strong> Generación automática de un snapshot de su base de datos actual antes de reemplazarla (retención de hasta 20 rollbacks).</li>
+                        </ul>
+                    </div>
+
+                    <!-- MANDATORY CONFIRMATION CHECKBOX -->
+                    <div style="background: rgba(245, 169, 127, 0.08); border: 1px solid var(--peach-orange); border-radius: 6px; padding: 12px 16px;">
+                        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; user-select: none;">
+                            <input type="checkbox"
+                                   id="import-db-confirm"
+                                   name="confirm_replace"
+                                   value="yes"
+                                   style="margin-top: 3px; accent-color: var(--peach-orange); transform: scale(1.15);"
+                                   onchange="checkImportReady();" />
+                            <div style="font-size: 12px; color: var(--text-main); line-height: 1.4;">
+                                <strong style="color: var(--peach-orange);">CONFIRMACIÓN DE SUSTITUCIÓN:</strong><br />
+                                He verificado el archivo y autorizo la sustitución del catálogo activo. Entiendo que se generará un snapshot de rollback preventivo en <code style="font-family: var(--font-mono);">DB/backups/</code>.
+                            </div>
+                        </label>
+                    </div>
+
+                </div>
+
+                <!-- FOOTER -->
+                <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <button type="button"
+                                class="btn"
+                                hx-get="/modal/close"
+                                hx-target="#modal-container"
+                                hx-swap="innerHTML">
+                            CANCELAR [ESC]
+                        </button>
+                        <span id="import-db-spinner" class="htmx-indicator" style="color: var(--peach-orange); font-size: 11.5px; font-weight: bold;">
+                            ⏳ [VALIDANDO INTEGRIDAD Y ESTRUCTURA...]
+                        </span>
+                    </div>
+
+                    <button type="submit"
+                            id="import-db-submit-btn"
+                            class="btn btn-primary"
+                            style="font-weight: 700; padding: 9px 24px;"
+                            disabled>
+                        📥 [VERIFICAR E IMPORTAR BASE DE DATOS]
+                    </button>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function checkImportReady() {{
+            var fileInput = document.getElementById('import-db-file-input');
+            var chk = document.getElementById('import-db-confirm');
+            var submitBtn = document.getElementById('import-db-submit-btn');
+            
+            var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+            var isConfirmed = chk && chk.checked;
+            
+            if (submitBtn) {{
+                var ready = hasFile && isConfirmed;
+                submitBtn.disabled = !ready;
+                submitBtn.style.opacity = ready ? '1' : '0.45';
+                submitBtn.style.cursor = ready ? 'pointer' : 'not-allowed';
+            }}
+        }}
+    </script>
+    """
+
+
 

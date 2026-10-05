@@ -753,14 +753,71 @@ def check_keys_availability(keys: List[str]) -> Tuple[List[str], List[str]]:
     return available, conflicts
 
 
-def generate_bulk_keys(prefix: str, count: int, start_num: int = 1, pad_zeros: bool = False) -> List[str]:
-    """Generates sequential keys: e.g. prefix='k', count=10, start=1 -> ['k1', 'k2', ... 'k10']."""
-    clean_pfx = clean_key(prefix) if prefix else ""
+def get_distinct_locations() -> List[str]:
+    """Returns sorted list of distinct non-empty locations from plants table."""
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT DISTINCT location FROM plants WHERE location IS NOT NULL AND TRIM(location) != '' ORDER BY location ASC")
+        return [r["location"] for r in cursor.fetchall()]
+
+
+def get_distinct_species() -> List[str]:
+    """Returns sorted list of distinct non-empty species from plants table."""
+    with get_connection() as conn:
+        cursor = conn.execute("SELECT DISTINCT species FROM plants WHERE species IS NOT NULL AND TRIM(species) != '' ORDER BY species ASC")
+        return [r["species"] for r in cursor.fetchall()]
+
+
+def get_next_available_key_number(prefix: str) -> int:
+    """
+    Finds the highest integer suffix for keys matching the given prefix and returns highest + 1.
+    e.g. if K1, K7 exist and prefix is K, returns 8.
+    """
+    clean_pfx = (prefix or "").strip().upper()
+    all_keys = get_all_keys()
+    max_num = 0
+    pattern = re.compile(rf"^{re.escape(clean_pfx)}[-_]?(\d+)$", re.IGNORECASE)
+    for k in all_keys:
+        m = pattern.match(k.strip())
+        if m:
+            try:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+    return max_num + 1
+
+
+def generate_bulk_keys(
+    prefix: str,
+    count: int,
+    start_num: int = 1,
+    pad_zeros: Any = 0
+) -> List[str]:
+    """Generates sequential keys: e.g. prefix='k', count=10, start=1 -> ['k1', ... 'k10']."""
+    raw_pfx = (prefix or "").strip()
+    clean_pfx = re.sub(r'[^a-zA-Z0-9_-]', '', raw_pfx).upper()
     keys = []
     count = max(1, min(count, 500))
     start_num = max(1, start_num)
+    
+    pad_mode = 0
+    if isinstance(pad_zeros, bool):
+        pad_mode = 2 if pad_zeros else 0
+    elif isinstance(pad_zeros, int):
+        pad_mode = pad_zeros
+    elif str(pad_zeros).strip() in ("1", "2", "true", "True"):
+        pad_mode = 2
+    elif str(pad_zeros).strip() in ("3",):
+        pad_mode = 3
+
     for i in range(start_num, start_num + count):
-        num_str = str(i).zfill(2) if pad_zeros and (start_num + count) > 9 else str(i)
+        if pad_mode == 2:
+            num_str = str(i).zfill(2)
+        elif pad_mode == 3:
+            num_str = str(i).zfill(3)
+        else:
+            num_str = str(i)
         keys.append(f"{clean_pfx}{num_str}")
     return keys
 
@@ -768,7 +825,9 @@ def generate_bulk_keys(prefix: str, count: int, start_num: int = 1, pad_zeros: b
 def create_plants_bulk(
     keys: List[str],
     common_data: Dict[str, Any],
-    skip_existing: bool = True
+    skip_existing: bool = True,
+    auto_number_alias: bool = False,
+    plant_photos_map: Optional[Dict[str, List[str]]] = None
 ) -> Tuple[bool, str, List[str], List[str]]:
     """
     Creates multiple plant specimens with identical metadata in an atomic SQLite transaction.
@@ -787,8 +846,7 @@ def create_plants_bulk(
     if not available:
         return False, "Todas las claves generadas ya existen en la base de datos. Ningún ejemplar fue creado.", [], conflicts
 
-    photos = common_data.get("photos", [])
-    photos_json = json.dumps(photos) if isinstance(photos, list) else "[]"
+    default_photos = common_data.get("photos", [])
     reg_date = (common_data.get("registration_date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -825,8 +883,16 @@ def create_plants_bulk(
     created_keys = []
     with get_connection() as conn:
         for idx, k in enumerate(available):
-            # Optional auto-numbering on alias if requested
-            aka_entry = aka_base
+            if auto_number_alias and aka_base:
+                aka_entry = f"{aka_base} #{idx + 1}"
+            else:
+                aka_entry = aka_base
+
+            # Determine photos for this specific specimen
+            photos_for_k = default_photos
+            if plant_photos_map and k in plant_photos_map:
+                photos_for_k = plant_photos_map[k]
+            photos_json = json.dumps(photos_for_k) if isinstance(photos_for_k, list) else "[]"
 
             conn.execute("""
                 INSERT INTO plants (
@@ -930,10 +996,13 @@ def delete_plant(name: str) -> Tuple[bool, List[str]]:
 
 
 def bulk_delete_plants(keys: List[str]) -> Tuple[int, List[str]]:
-    """Deletes multiple plants in one transaction. Returns (deleted_count, all_photos)."""
+    """Deletes multiple plants in one transaction. Automatically takes a hidden safety backup snapshot first."""
     clean_keys = [clean_key(k) for k in keys if clean_key(k)]
     if not clean_keys:
         return 0, []
+
+    # Automated hidden safety backup immediately before performing mass removal
+    create_pre_bulk_delete_backup()
 
     all_photos: List[str] = []
     with get_connection() as conn:
@@ -1095,6 +1164,204 @@ def backup_db(custom_target_path: Optional[str] = None, max_retention: int = 20)
     return target_file
 
 
+def create_pre_bulk_delete_backup() -> Optional[str]:
+    """
+    Creates an automatic, seamless hidden backup snapshot of the SQLite database
+    immediately prior to performing a bulk deletion (baja masiva).
+    Guarantees that accidental mass removals can always be safely audited or restored.
+    """
+    try:
+        os.makedirs(BACKUPS_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target_file = os.path.join(BACKUPS_DIR, f"plantation_pre_bulk_delete_{timestamp}.db")
+
+        with get_connection() as src_conn:
+            dest_conn = sqlite3.connect(target_file)
+            with dest_conn:
+                src_conn.backup(dest_conn)
+            dest_conn.close()
+
+        # Prune old pre-bulk-delete backups to keep the latest 20 safety rollbacks
+        try:
+            pre_backups = sorted([
+                os.path.join(BACKUPS_DIR, f)
+                for f in os.listdir(BACKUPS_DIR)
+                if f.startswith("plantation_pre_bulk_delete_") and f.endswith(".db")
+            ])
+            if len(pre_backups) > 20:
+                for old_bk in pre_backups[:-20]:
+                    try:
+                        os.remove(old_bk)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+        print(f"[BACKUP] Hidden pre-bulk-delete snapshot created: {target_file}")
+        return target_file
+    except Exception as e:
+        print(f"[BACKUP] Error creating hidden pre-bulk-delete backup: {e}")
+        return None
+
+
+def validate_and_restore_db(source_db_path: str) -> Tuple[bool, str, Dict[str, Any]]:
+    """
+    Validates an uploaded SQLite database file for strict compatibility and structure,
+    performs automated migrations if needed, creates a pre-restore rollback snapshot
+    of the active database, and performs an atomic online backup replacement.
+
+    Returns:
+        (is_valid, message, metadata_dict)
+    """
+    if not os.path.exists(source_db_path) or os.path.getsize(source_db_path) < 100:
+        return False, "El archivo está vacío o no es un archivo de base de datos válido.", {}
+
+    # 1. Check SQLite 3 magic header (first 16 bytes: 'SQLite format 3\\x00')
+    try:
+        with open(source_db_path, "rb") as f:
+            header = f.read(16)
+            if header != b"SQLite format 3\x00":
+                return False, "Cabecera no válida: El archivo no es una base de datos SQLite versión 3.", {}
+    except Exception as e:
+        return False, f"Error al leer la cabecera del archivo: {e}", {}
+
+    # 2. Open connection to candidate database and check integrity
+    try:
+        cand_conn = sqlite3.connect(source_db_path)
+        cand_conn.row_factory = sqlite3.Row
+        cur = cand_conn.cursor()
+
+        # PRAGMA integrity_check
+        cur.execute("PRAGMA integrity_check;")
+        res = cur.fetchone()
+        if not res or res[0] != "ok":
+            cand_conn.close()
+            return False, f"Integridad corrupta: SQLite integrity_check falló ({res[0] if res else 'desconocido'}).", {}
+
+        # 3. Check for existence of essential 'plants' table
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='plants';")
+        if not cur.fetchone():
+            cand_conn.close()
+            return False, "Incompatible: El archivo no contiene la tabla obligatoria 'plants' requerida por Plantation.", {}
+
+        # 4. Check mandatory columns in 'plants'
+        cur.execute("PRAGMA table_info(plants);")
+        col_rows = cur.fetchall()
+        col_names = [r["name"] for r in col_rows]
+
+        if "name" not in col_names or "species" not in col_names:
+            cand_conn.close()
+            return False, "Incompatible: La tabla 'plants' carece de las columnas clave ('name' y 'species').", {}
+
+        # 5. Backward compatibility auto-migration: Add any missing modern columns
+        expected_cols = {
+            "aka": "TEXT DEFAULT ''",
+            "location": "TEXT DEFAULT ''",
+            "height": "TEXT DEFAULT ''",
+            "registration_date": "TEXT DEFAULT ''",
+            "padres": "TEXT DEFAULT ''",
+            "sowing_cutting_date": "TEXT DEFAULT ''",
+            "graft": "TEXT DEFAULT ''",
+            "last_pruned": "TEXT DEFAULT ''",
+            "last_repotted": "TEXT DEFAULT ''",
+            "fertilizante": "TEXT DEFAULT ''",
+            "photos": "TEXT DEFAULT '[]'",
+            "status": "TEXT NOT NULL DEFAULT 'OK'",
+            "comentarios": "TEXT DEFAULT ''",
+            "indxw": "INTEGER NOT NULL DEFAULT 0",
+            "created_at": "TEXT DEFAULT CURRENT_TIMESTAMP",
+            "updated_at": "TEXT DEFAULT CURRENT_TIMESTAMP"
+        }
+        for col, col_def in expected_cols.items():
+            if col not in col_names:
+                cand_conn.execute(f"ALTER TABLE plants ADD COLUMN {col} {col_def};")
+
+        # 6. Normalize and repair data
+        cand_conn.execute("UPDATE plants SET status = 'OK' WHERE status IS NULL OR lower(trim(status)) = 'ok';")
+        cand_conn.execute("UPDATE plants SET status = 'notOK' WHERE status != 'OK';")
+
+        # Ensure indexes exist
+        for col in ("species", "status", "location", "aka", "height"):
+            cand_conn.execute(f"CREATE INDEX IF NOT EXISTS idx_plants_{col} ON plants({col});")
+        cand_conn.commit()
+
+        # 7. Collect metadata statistics
+        cur.execute("SELECT count(*) FROM plants;")
+        total_plants = cur.fetchone()[0]
+
+        cur.execute("SELECT photos FROM plants;")
+        total_photos_count = 0
+        for row in cur.fetchall():
+            try:
+                p_list = json.loads(row[0]) if row[0] else []
+                total_photos_count += len(p_list)
+            except Exception:
+                pass
+
+        cand_conn.close()
+
+    except Exception as e:
+        return False, f"Error durante la validación del esquema de la base de datos: {e}", {}
+
+    # 8. Create automatic safety rollback snapshot of the ACTIVE database before replacement
+    safety_backup_name = None
+    try:
+        os.makedirs(BACKUPS_DIR, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safety_path = os.path.join(BACKUPS_DIR, f"plantation_pre_restore_{ts}.db")
+        with get_connection() as active_conn:
+            dest_backup = sqlite3.connect(safety_path)
+            with dest_backup:
+                active_conn.backup(dest_backup)
+            dest_backup.close()
+        safety_backup_name = os.path.basename(safety_path)
+        print(f"[RESTORE] Created pre-restore rollback backup: {safety_path}")
+
+        # Prune old pre-restore safety rollbacks to keep the latest 20 snapshots
+        try:
+            restore_backups = sorted([
+                os.path.join(BACKUPS_DIR, f)
+                for f in os.listdir(BACKUPS_DIR)
+                if f.startswith("plantation_pre_restore_") and f.endswith(".db")
+            ])
+            if len(restore_backups) > 20:
+                for old_bk in restore_backups[:-20]:
+                    try:
+                        os.remove(old_bk)
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[RESTORE] Warning: Could not create pre-restore snapshot: {e}")
+
+    # 9. Atomic online replacement of active DB
+    try:
+        with _db_lock:
+            with sqlite3.connect(source_db_path) as src_conn:
+                dest_conn = _open_raw_connection()
+                try:
+                    dest_conn.execute("PRAGMA journal_mode = WAL;")
+                    src_conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
+
+            # Re-run init_db to set WAL, verify integrity, and prime caches
+            init_db()
+
+    except Exception as e:
+        return False, f"Error crítico al sustituir la base de datos: {e}", {}
+
+    metadata = {
+        "total_plants": total_plants,
+        "total_photos_referenced": total_photos_count,
+        "safety_backup": safety_backup_name or "plantation_pre_restore.db",
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    return True, "Base de datos verificada, migrada e importada con éxito.", metadata
+
+
 def get_database_health() -> Dict[str, Any]:
     """Returns database health metrics, integrity status, and backup snapshot details."""
     integrity_ok, integrity_msg = check_database_integrity()
@@ -1103,12 +1370,13 @@ def get_database_health() -> Dict[str, Any]:
     backups = []
     if os.path.exists(BACKUPS_DIR):
         for f in os.listdir(BACKUPS_DIR):
-            if f.startswith("plantation_backup_") and f.endswith(".db"):
+            if (f.startswith("plantation_backup_") or f.startswith("plantation_pre_bulk_delete_") or f.startswith("plantation_pre_restore_")) and f.endswith(".db"):
                 fp = os.path.join(BACKUPS_DIR, f)
                 try:
                     mtime = os.path.getmtime(fp)
                     size = os.path.getsize(fp)
-                    backups.append({"filename": f, "path": fp, "mtime": mtime, "size": size})
+                    is_pre_del = "pre_bulk_delete" in f or "pre_restore" in f
+                    backups.append({"filename": f, "path": fp, "mtime": mtime, "size": size, "is_pre_delete": is_pre_del})
                 except OSError:
                     pass
     backups.sort(key=lambda x: x["mtime"], reverse=True)
@@ -1127,7 +1395,7 @@ def get_database_health() -> Dict[str, Any]:
         "latest_backup_filename": backups[0]["filename"] if backups else None,
         "database_size_bytes": db_size,
         "database_size_formatted": size_formatted,
-        "backups_list": backups[:10],
+        "backups_list": backups[:20],
     }
 
 

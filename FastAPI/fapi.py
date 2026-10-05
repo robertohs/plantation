@@ -4,9 +4,11 @@ Lightweight HTTP endpoints using SQLite, HTMX partial rendering, and modular tem
 """
 
 import csv
+import html
 import io
 import os
 import re
+import tempfile
 from datetime import datetime
 from typing import List, Optional
 
@@ -28,9 +30,17 @@ from .templates.modals import (
     render_new_plant_modal,
     render_edit_plant_modal,
     render_bulk_create_modal,
-    render_bulk_keys_preview
+    render_bulk_delete_modal,
+    render_bulk_keys_preview,
+    render_import_db_modal
 )
-from .templates.admin import render_admin_panel_content
+from .templates.admin import (
+    render_admin_modal,
+    render_admin_panel_content,
+    render_admin_table_content,
+    render_admin_stats_cards,
+    render_db_health_card
+)
 from .templates.layout import render_index_html
 from .templates.dossier import render_printable_dossier_html
 import stats
@@ -55,9 +65,17 @@ def get_oob_admin(request: Request) -> str:
 # MAIN PAGE & REACTIVE GRID
 # ==============================================================================
 
-@router.get("/", response_class=HTMLResponse)
+@router.api_route("/healthz", methods=["GET", "HEAD"])
+@router.api_route("/health", methods=["GET", "HEAD"])
+def health_check(request: Request):
+    return HTMLResponse("OK", status_code=200)
+
+
+@router.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def index_view(request: Request):
     """Main application shell."""
+    if request.method == "HEAD":
+        return HTMLResponse(content="", status_code=200)
     plants = db.get_plants()
     return HTMLResponse(render_index_html(plants))
 
@@ -235,6 +253,57 @@ def bulk_new_plant_modal():
     return HTMLResponse(render_bulk_create_modal())
 
 
+@router.get("/plants/modal/bulk-delete", response_class=HTMLResponse)
+def bulk_delete_modal():
+    """Renders the batch specimen deletion and photo purge modal."""
+    return HTMLResponse(render_bulk_delete_modal())
+
+
+@router.post("/plants/bulk-delete-modal-action", response_class=HTMLResponse)
+async def bulk_delete_modal_action(
+    keys_csv: Optional[str] = Form(None),
+    keys: List[str] = Form([])
+):
+    """Processes batch removal of plants and disk photos from the modal."""
+    final_keys_set = set()
+    if keys_csv and keys_csv.strip():
+        for k in keys_csv.split(","):
+            clean = db.clean_key(k)
+            if clean:
+                final_keys_set.add(clean)
+    for k in keys:
+        clean = db.clean_key(k)
+        if clean:
+            final_keys_set.add(clean)
+
+    final_keys = list(final_keys_set)
+    deleted_count = 0
+    cleaned_photos_count = 0
+    if final_keys:
+        deleted_count, photos_to_clean = db.bulk_delete_plants(final_keys)
+        if photos_to_clean:
+            cleaned_photos_count = len(photos_to_clean)
+            cleanup_plant_photos(photos_to_clean)
+
+    plants = db.get_plants()
+    plants_grid = render_plants_grid(plants)
+    stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+    close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
+
+    inv = db.get_inventory_stats()
+    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
+    oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
+
+    toast_banner = f"""
+    <div id="bulk-del-toast-banner" style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; color: var(--red-crimson); font-size: 13px; font-weight: 600;">
+        <span>🗑 <strong>Baja masiva completada:</strong> Se eliminaron {deleted_count} ejemplares de la base de datos y se purgaron {cleaned_photos_count} fotografías en disco.</span>
+        <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--red-crimson); font-weight: bold; cursor: pointer; font-size: 16px;">✕</button>
+    </div>
+    """
+
+    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob + oob_admin_stats + oob_admin_table)
+
+
 @router.get("/plants/validate-bulk-keys", response_class=HTMLResponse)
 def validate_bulk_keys_endpoint(
     prefix: str = Query("k"),
@@ -259,11 +328,14 @@ def validate_bulk_keys_endpoint(
 @router.post("/plants/bulk-create", response_class=HTMLResponse)
 async def bulk_create_plants_submit(
     request: Request,
-    prefix: str = Form("k"),
+    prefix: str = Form("K"),
     count: int = Form(10),
     start_num: int = Form(1),
-    pad_zeros: Optional[str] = Form(None),
-    skip_conflicts: Optional[str] = Form(None),
+    pad_zeros: Optional[str] = Form("2"),
+    skip_conflicts: Optional[str] = Form("1"),
+    key_mode: str = Form("seq"),
+    manual_keys: str = Form(""),
+    auto_number_alias: Optional[str] = Form(None),
     species: str = Form(...),
     aka: str = Form(""),
     location: str = Form(""),
@@ -279,28 +351,49 @@ async def bulk_create_plants_submit(
 ):
     """Creates multiple specimens in a batch with shared metadata and validated sequential keys."""
     clean_pfx = (prefix or "").strip()
-    if not clean_pfx:
-        return HTMLResponse("""
-            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
-                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
-                    ✕ El prefijo o código clave no puede estar vacío.
-                </div>
-            </div>
-        """)
+    is_skip = bool(skip_conflicts and str(skip_conflicts).strip() in ("1", "true", "on"))
+    is_auto_alias = bool(auto_number_alias and str(auto_number_alias).strip() in ("1", "true", "on"))
 
-    is_pad = bool(pad_zeros and pad_zeros.strip() in ("1", "true", "on"))
-    is_skip = bool(skip_conflicts and skip_conflicts.strip() in ("1", "true", "on"))
-
-    # Generate candidate key list
-    keys = db.generate_bulk_keys(clean_pfx, count, start_num, is_pad)
-    if not keys:
-        return HTMLResponse("""
-            <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
-                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
-                    ✕ No se generaron claves válidas. Verifique el prefijo y cantidad.
+    # Generate or parse candidate keys
+    if key_mode == "manual" and manual_keys.strip():
+        import re
+        raw_parts = re.split(r'[, \n\r\t]+', manual_keys.strip())
+        keys = []
+        for p in raw_parts:
+            ck = db.clean_key(p)
+            if ck and ck not in keys:
+                keys.append(ck)
+        if not keys:
+            return HTMLResponse("""
+                <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                    <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
+                        ✕ No se encontraron claves alfanuméricas válidas en el texto manual ingresado.
+                    </div>
                 </div>
-            </div>
-        """)
+            """)
+    else:
+        if not clean_pfx:
+            return HTMLResponse("""
+                <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                    <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
+                        ✕ El prefijo o código clave no puede estar vacío.
+                    </div>
+                </div>
+            """)
+        pad_mode_val = 2
+        try:
+            pad_mode_val = int(pad_zeros) if pad_zeros is not None else 2
+        except (ValueError, TypeError):
+            pad_mode_val = 2
+        keys = db.generate_bulk_keys(clean_pfx, count, start_num, pad_mode_val)
+        if not keys:
+            return HTMLResponse("""
+                <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
+                    <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
+                        ✕ No se generaron claves válidas. Verifique el prefijo y cantidad.
+                    </div>
+                </div>
+            """)
 
     # Validate parent keys
     all_keys = db.get_all_keys()
@@ -311,7 +404,7 @@ async def bulk_create_plants_submit(
     if p1 and p1.lower() not in ("unknown", "desconocido") and p1.lower() not in all_keys_set:
         return HTMLResponse(f"""
             <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
-                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
                     ✕ El Progenitor 1 '{html.escape(p1)}' no existe en la base de datos.
                 </div>
             </div>
@@ -320,20 +413,11 @@ async def bulk_create_plants_submit(
     if p2 and p2.lower() not in ("unknown", "desconocido") and p2.lower() not in all_keys_set:
         return HTMLResponse(f"""
             <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
-                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
                     ✕ El Progenitor 2 '{html.escape(p2)}' no existe en la base de datos.
                 </div>
             </div>
         """)
-
-    # Process optional shared photo
-    saved_photos = []
-    if bulk_photo and bulk_photo.filename:
-        file_bytes = await bulk_photo.read()
-        if file_bytes and len(file_bytes) > 0:
-            ok, saved_fn, _ = validate_and_save_photo(clean_pfx, file_bytes, bulk_photo.filename)
-            if ok and saved_fn:
-                saved_photos.append(saved_fn)
 
     clean_sow = (sowing_cutting_date or "").strip()
     if clean_sow:
@@ -354,15 +438,31 @@ async def bulk_create_plants_submit(
         "fertilizante": fertilizante.strip(),
         "comentarios": comentarios.strip(),
         "indxw": 0,
-        "photos": saved_photos
+        "photos": []
     }
 
-    success, msg, created, conflicts = db.create_plants_bulk(keys, common_data, skip_existing=is_skip)
+    # Handle batch photo assignment per individual plant
+    plant_photos_map = {}
+    if bulk_photo and bulk_photo.filename:
+        file_bytes = await bulk_photo.read()
+        if file_bytes and len(file_bytes) > 0:
+            for k in keys:
+                ok, saved_fn, _ = validate_and_save_photo(k, file_bytes, bulk_photo.filename)
+                if ok and saved_fn:
+                    plant_photos_map[k] = [saved_fn]
+
+    success, msg, created, conflicts = db.create_plants_bulk(
+        keys,
+        common_data,
+        skip_existing=is_skip,
+        auto_number_alias=is_auto_alias,
+        plant_photos_map=plant_photos_map
+    )
 
     if not success:
         return HTMLResponse(f"""
             <div id="bulk-keys-preview-container" hx-swap-oob="innerHTML">
-                <div class="alert-box alert-error" style="font-size: 11.5px; padding: 8px 12px; margin-bottom: 8px;">
+                <div style="background: rgba(239, 68, 68, 0.14); border: 1px solid var(--red-crimson); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; font-size: 11.5px; color: var(--red-crimson);">
                     ✕ {html.escape(msg)}
                 </div>
             </div>
@@ -372,9 +472,15 @@ async def bulk_create_plants_submit(
     plants_grid = render_plants_grid(plants)
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
-    admin_oob = get_oob_admin(request)
+    
+    toast_banner = f"""
+    <div id="bulk-toast-banner" style="background: rgba(34, 197, 94, 0.15); border: 1px solid var(--green-sage); border-radius: 4px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; color: var(--green-sage); font-size: 13px; font-weight: 600;">
+        <span>🌿 <strong>¡Registro masivo completado con éxito!</strong> {html.escape(msg)}</span>
+        <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: var(--green-sage); font-weight: bold; cursor: pointer; font-size: 16px;">✕</button>
+    </div>
+    """
 
-    return HTMLResponse(plants_grid + stats_bar + close_modal_oob + admin_oob)
+    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob)
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
@@ -771,56 +877,60 @@ def remove_plant_photo(request: Request, name: str, filename: str, source: str =
 # ADMIN TRAY & INVENTORY
 # ==============================================================================
 
-@router.get("/admin/toggle", response_class=HTMLResponse)
-def admin_toggle(request: Request, is_open: Optional[str] = Query(None)):
-    """Toggles visibility of the admin tray statelessly based on client request."""
-    currently_open = (is_open == "true" or is_open == "1") if is_open is not None else is_admin_open(request)
-    if not currently_open:
-        resp = HTMLResponse(render_admin_panel_content())
-        resp.set_cookie("plantation_admin", "1", max_age=86400, httponly=False)
-        return resp
-    resp = HTMLResponse("")
-    resp.set_cookie("plantation_admin", "0", max_age=86400, httponly=False)
-    return resp
-
-
+@router.get("/admin/modal", response_class=HTMLResponse)
 @router.get("/admin", response_class=HTMLResponse)
-def admin_open():
-    """Opens admin panel."""
-    resp = HTMLResponse(render_admin_panel_content())
-    resp.set_cookie("plantation_admin", "1", max_age=86400, httponly=False)
-    return resp
+@router.get("/admin/toggle", response_class=HTMLResponse)
+def admin_modal_view():
+    """Renders the comprehensive admin & inventory management modal popup."""
+    return HTMLResponse(render_admin_modal())
 
 
 @router.get("/admin/close", response_class=HTMLResponse)
 def admin_close():
-    """Closes admin panel."""
-    resp = HTMLResponse("")
-    resp.set_cookie("plantation_admin", "0", max_age=86400, httponly=False)
-    return resp
+    """Closes admin panel modal."""
+    return HTMLResponse("")
 
 
 @router.get("/admin/filter", response_class=HTMLResponse)
-def admin_filter_tab(tab: str = "ALL"):
-    """Filters admin inventory table by category."""
-    return HTMLResponse(render_admin_panel_content(filter_tag=tab))
+def admin_filter_tab(tab: str = "ALL", search: Optional[str] = None):
+    """Filters admin inventory table by category tab or search query."""
+    return HTMLResponse(render_admin_table_content(filter_tag=tab, search_q=search or ""))
 
 
 @router.post("/admin/bulk-delete", response_class=HTMLResponse)
 def admin_bulk_delete(keys: List[str] = Form([])):
     """Deletes selected specimens and purges their photos from disk."""
-    if not keys:
-        return HTMLResponse(render_admin_panel_content())
-
-    deleted_count, photos_to_clean = db.bulk_delete_plants(keys)
-    if photos_to_clean:
-        cleanup_plant_photos(photos_to_clean)
+    if keys:
+        deleted_count, photos_to_clean = db.bulk_delete_plants(keys)
+        if photos_to_clean:
+            cleanup_plant_photos(photos_to_clean)
 
     plants = db.get_plants()
     oob_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
     oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+    inv = db.get_inventory_stats()
+    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
 
-    return HTMLResponse(render_admin_panel_content() + oob_grid + oob_stats)
+    return HTMLResponse(render_admin_table_content() + oob_grid + oob_stats + oob_admin_stats)
+
+
+@router.delete("/admin/plant/{name}", response_class=HTMLResponse)
+def admin_delete_single_plant(name: str):
+    """Deletes a single plant from within the admin modal and updates grid & stats."""
+    key = db.clean_key(name)
+    plant = db.get_plant(key)
+    if plant:
+        photos = plant.get("photos", [])
+        db.delete_plant(key)
+        if photos:
+            cleanup_plant_photos(photos)
+
+    plants = db.get_plants()
+    oob_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
+    oob_stats = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+    inv = db.get_inventory_stats()
+    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
+    return HTMLResponse("" + oob_grid + oob_stats + oob_admin_stats)
 
 
 @router.get("/admin/inventory.csv")
@@ -974,6 +1084,81 @@ def download_full_archive():
             "Cache-Control": "no-cache"
         }
     )
+
+
+@router.get("/admin/modal/import-db", response_class=HTMLResponse)
+def admin_import_db_modal():
+    """Renders the safe SQLite database import and integrity verification modal."""
+    return HTMLResponse(render_import_db_modal())
+
+
+@router.post("/admin/import-db", response_class=HTMLResponse)
+async def admin_import_db_action(
+    db_file: UploadFile = File(...),
+    confirm_replace: Optional[str] = Form(None)
+):
+    """
+    Validates and restores a previously backed-up SQLite database.
+    Guarantees integrity check, backward compatibility migrations,
+    and automatic safety rollback snapshot.
+    """
+    if not confirm_replace or confirm_replace.lower() not in ("yes", "1", "true", "on"):
+        return HTMLResponse(render_import_db_modal(
+            error_msg="Debe marcar la casilla de confirmación para autorizar la sustitución de la base de datos."
+        ))
+
+    if not db_file or not db_file.filename:
+        return HTMLResponse(render_import_db_modal(
+            error_msg="No se seleccionó ningún archivo para importar."
+        ))
+
+    # Save to a temporary file
+    temp_target = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_path = temp_target.name
+    try:
+        content = await db_file.read()
+        if not content:
+            temp_target.close()
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+            return HTMLResponse(render_import_db_modal(
+                error_msg="El archivo subido está vacío (0 bytes)."
+            ))
+
+        temp_target.write(content)
+        temp_target.close()
+
+        # Validate, auto-migrate, create rollback snapshot, and restore
+        success, message, metadata = db.validate_and_restore_db(temp_path)
+        if not success:
+            return HTMLResponse(render_import_db_modal(error_msg=message))
+
+        # Re-render updated grids and components via OOB
+        plants = db.get_plants()
+        plants_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
+        stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
+
+        inv = db.get_inventory_stats()
+        admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
+        admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
+        db_card = f'<div id="db-health-card" hx-swap-oob="outerHTML">{render_db_health_card()}</div>'
+
+        modal_success = render_import_db_modal(success_info=metadata)
+
+        return HTMLResponse(modal_success + plants_grid + stats_bar + admin_stats + admin_table + db_card)
+
+    except Exception as e:
+        return HTMLResponse(render_import_db_modal(
+            error_msg=f"Ocurrió un error inesperado durante la importación: {e}"
+        ))
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 # ==============================================================================
