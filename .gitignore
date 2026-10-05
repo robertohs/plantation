@@ -96,6 +96,7 @@ Thumbs.db
 *.swo
 
 db/
-
+images/
+!images/images.py
 
 
