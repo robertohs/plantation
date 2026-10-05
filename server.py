@@ -32,6 +32,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "FastAPI", "static")
 IMAGES_DIR = os.path.join(BASE_DIR, "Images")
 
+os.makedirs(STATIC_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "DB"), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "DB", "backups"), exist_ok=True)
+os.makedirs(os.path.join(BASE_DIR, "tmp"), exist_ok=True)
+
 
 def patch_uvicorn_upgrade_handling():
     """

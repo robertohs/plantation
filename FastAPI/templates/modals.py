@@ -55,8 +55,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
     indxw_val = int(plant_data.get("indxw", 0))
 
     existing_keys = db.get_all_keys()
-    plants_list = db.get_plants()
-    available_parents = [item for item in plants_list if item.get("name") != plant_data.get("name", "")]
+    available_parents = db.get_parent_suggestions(exclude_name=plant_data.get("name", ""), limit=300)
     datalist_items = []
     for parent_item in available_parents:
         p_name = html.escape(str(parent_item.get("name", "")))
@@ -97,7 +96,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                maxlength="20"
                autocomplete="off"
                hx-get="/plants/validate-key"
-               hx-trigger="input changed delay:500ms, blur"
+               hx-trigger="input changed delay:400ms"
                hx-target="#key-validation-feedback"
                hx-swap="innerHTML" />
         <div id="key-validation-feedback" style="min-height: 18px; margin-top: 4px; font-size: 11px;"></div>
@@ -266,7 +265,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                                maxlength="20"
                                autocomplete="off"
                                hx-get="/plants/validate-parent-key?num=1&plant={name_val}"
-                               hx-trigger="input changed delay:500ms, blur, change"
+                               hx-trigger="input changed delay:400ms, change"
                                hx-target="#padre1-validation-feedback"
                                hx-swap="innerHTML"
                                oninput="updateCombinedPadres();" />
@@ -299,7 +298,7 @@ def render_form_fields(plant: Optional[Dict[str, Any]] = None, is_edit: bool = F
                                maxlength="20"
                                autocomplete="off"
                                hx-get="/plants/validate-parent-key?num=2&plant={name_val}"
-                               hx-trigger="input changed delay:500ms, blur, change"
+                               hx-trigger="input changed delay:400ms, change"
                                hx-target="#padre2-validation-feedback"
                                hx-swap="innerHTML"
                                oninput="updateCombinedPadres();" />
@@ -1303,7 +1302,7 @@ def render_bulk_keys_preview(
             if (btn) {{
                 btn.disabled = {'true' if submit_disabled else 'false'};
                 btn.style.opacity = {'0.5' if submit_disabled else '1'};
-                btn.style.cursor = {'not-allowed' if submit_disabled else 'pointer'};
+                btn.style.cursor = '{"not-allowed" if submit_disabled else "pointer"}';
                 btn.innerHTML = '➕ CREAR LOTE DE {avail_count} EJEMPLARES';
             }}
         }})();
@@ -1326,7 +1325,7 @@ def render_bulk_create_modal() -> str:
     location_options = "".join(f'<option value="{html.escape(loc)}">{html.escape(loc)}</option>' for loc in distinct_locations)
     
     # Parent datalist
-    plants_list = db.get_plants()
+    plants_list = db.get_parent_suggestions(limit=300)
     parent_options = "".join(
         f'<option value="{html.escape(str(p.get("name", "")))}">{html.escape(str(p.get("name", "")))} — {html.escape(str(p.get("species", "")))}</option>'
         for p in plants_list
@@ -2042,18 +2041,7 @@ def render_bulk_create_success_modal(
 
 def render_bulk_delete_modal() -> str:
     """Renders the comprehensive Bulk Specimen Removal and Photo Purge modal."""
-    all_plants = db.get_plants()
-    plants_summary = [
-        {
-            "name": p["name"],
-            "species": p.get("species", ""),
-            "aka": p.get("aka", ""),
-            "status": db.normalize_status(p.get("status")),
-            "location": p.get("location", "") or "",
-            "photos_count": len(p.get("photos") or [])
-        }
-        for p in all_plants
-    ]
+    plants_summary = db.get_plants_summary_for_bulk_delete(limit=3000)
     plants_json = json.dumps(plants_summary)
     distinct_locations = db.get_distinct_locations()
     loc_options = "".join(f'<option value="{html.escape(l)}">{html.escape(l)}</option>' for l in distinct_locations)

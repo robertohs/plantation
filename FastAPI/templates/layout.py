@@ -222,9 +222,21 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             goToDossierSlide(cur + delta);
         }}
 
+        window.addEventListener('htmx:targetError', function(e) {{
+            if (e && e.stopPropagation) e.stopPropagation();
+            if (e && e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (e && e.preventDefault) e.preventDefault();
+        }}, true);
+        document.addEventListener('htmx:targetError', function(e) {{
+            if (e && e.stopPropagation) e.stopPropagation();
+            if (e && e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (e && e.preventDefault) e.preventDefault();
+        }}, true);
+
         function toggleAdminPanel(e) {{
             if (e && e.preventDefault) e.preventDefault();
-            if (window.htmx) {{
+            var mc = document.getElementById('modal-container');
+            if (window.htmx && mc) {{
                 htmx.ajax('GET', '/admin/modal', {{ target: '#modal-container', swap: 'innerHTML' }});
             }}
         }}
@@ -581,14 +593,27 @@ def render_index_html(plants: List[Dict[str, Any]]) -> str:
             var spinner = document.getElementById('search-spinner');
             if (spinner) spinner.style.display = 'inline-block';
 
-            htmx.ajax('GET', endpoint, {{
+            var plantBox = document.getElementById('plant-container');
+            if (!plantBox) {{
+                if (spinner) spinner.style.display = 'none';
+                return;
+            }}
+
+            var req = htmx.ajax('GET', endpoint, {{
                 target: '#plant-container',
                 swap: 'innerHTML'
-            }}).then(function() {{
-                if (spinner) spinner.style.display = 'none';
-            }}).catch(function() {{
-                if (spinner) spinner.style.display = 'none';
             }});
+            if (req && req.then) {{
+                req.then(function() {{
+                    if (spinner) spinner.style.display = 'none';
+                }}).catch(function() {{
+                    if (spinner) spinner.style.display = 'none';
+                }});
+            }} else {{
+                setTimeout(function() {{
+                    if (spinner) spinner.style.display = 'none';
+                }}, 250);
+            }}
         }}
 
         function applyPlantFilter(type, value, btn) {{

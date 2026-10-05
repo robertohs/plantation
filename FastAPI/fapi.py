@@ -293,9 +293,6 @@ async def bulk_delete_modal_action(
     close_modal_oob = '<div id="modal-container" hx-swap-oob="innerHTML"></div>'
 
     inv = db.get_inventory_stats()
-    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
-    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
-    oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
     reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
     toast_banner = f"""
@@ -305,7 +302,7 @@ async def bulk_delete_modal_action(
     </div>
     """
 
-    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob + oob_admin_badge + oob_admin_stats + oob_admin_table + reset_filters_script)
+    return HTMLResponse(toast_banner + plants_grid + stats_bar + close_modal_oob + reset_filters_script)
 
 
 @router.get("/plants/validate-bulk-keys", response_class=HTMLResponse)
@@ -499,10 +496,6 @@ async def bulk_create_plants_submit(
     plants_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
     stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
 
-    inv = db.get_inventory_stats()
-    oob_admin_badge = f'<span id="admin-total-badge" hx-swap-oob="outerHTML" style="font-size: 10.5px; font-family: var(--font-mono); color: var(--text-dim); background: var(--bg-surface); padding: 2px 8px; border-radius: 2px; border: 1px solid var(--border-dim);">TOTAL: {inv["total"]} EJEMPLARES</span>'
-    oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
-    oob_admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
     reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
     # Clear, intuitive, satisfying success modal
@@ -516,7 +509,7 @@ async def bulk_create_plants_submit(
         photos_count=len(plant_photos_map)
     )
 
-    return HTMLResponse(success_modal + plants_grid + stats_bar + oob_admin_badge + oob_admin_stats + oob_admin_table + reset_filters_script)
+    return HTMLResponse(success_modal + plants_grid + stats_bar + reset_filters_script)
 
 
 @router.get("/plants/{name}", response_class=HTMLResponse)
@@ -932,13 +925,29 @@ def admin_close():
 
 
 @router.get("/admin/filter", response_class=HTMLResponse)
-def admin_filter_tab(tab: str = "ALL", search: Optional[str] = None):
-    """Filters admin inventory table by category tab or search query."""
-    return HTMLResponse(render_admin_table_content(filter_tag=tab, search_q=search or ""))
+def admin_filter_tab(
+    tab: str = "ALL",
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20
+):
+    """Filters admin inventory table by category tab or search query with server-side pagination."""
+    return HTMLResponse(render_admin_table_content(
+        filter_tag=tab,
+        search_q=search or "",
+        page=page,
+        page_size=page_size
+    ))
 
 
 @router.post("/admin/bulk-delete", response_class=HTMLResponse)
-def admin_bulk_delete(keys: List[str] = Form([])):
+def admin_bulk_delete(
+    keys: List[str] = Form([]),
+    tab: str = Form("ALL"),
+    search: str = Form(""),
+    page: int = Form(1),
+    page_size: int = Form(20)
+):
     """Deletes selected specimens and purges their photos from disk."""
     if keys:
         deleted_count, photos_to_clean = db.bulk_delete_plants(keys)
@@ -953,7 +962,13 @@ def admin_bulk_delete(keys: List[str] = Form([])):
     oob_admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
     reset_filters_script = '<script>if (window.resetPlantFiltersUI) resetPlantFiltersUI();</script>'
 
-    return HTMLResponse(render_admin_table_content() + oob_grid + oob_stats + oob_admin_badge + oob_admin_stats + reset_filters_script)
+    table_content = render_admin_table_content(
+        filter_tag=tab,
+        search_q=search,
+        page=page,
+        page_size=page_size
+    )
+    return HTMLResponse(table_content + oob_grid + oob_stats + oob_admin_badge + oob_admin_stats + reset_filters_script)
 
 
 @router.delete("/admin/plant/{name}", response_class=HTMLResponse)
@@ -1210,14 +1225,9 @@ async def admin_import_db_action(
         plants_grid = f'<div id="plant-container" hx-swap-oob="innerHTML">{render_plants_grid(plants)}</div>'
         stats_bar = f'<div id="stats-bar" hx-swap-oob="outerHTML">{render_stats_bar()}</div>'
 
-        inv = db.get_inventory_stats()
-        admin_stats = f'<div id="admin-stats-summary" hx-swap-oob="innerHTML">{render_admin_stats_cards(inv)}</div>'
-        admin_table = f'<div id="admin-table-container" hx-swap-oob="innerHTML">{render_admin_table_content()}</div>'
-        db_card = f'<div id="db-health-card" hx-swap-oob="outerHTML">{render_db_health_card()}</div>'
-
         modal_success = render_import_db_modal(success_info=metadata)
 
-        return HTMLResponse(modal_success + plants_grid + stats_bar + admin_stats + admin_table + db_card)
+        return HTMLResponse(modal_success + plants_grid + stats_bar)
 
     except Exception as e:
         return HTMLResponse(render_import_db_modal(
