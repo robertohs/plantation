@@ -1011,43 +1011,76 @@ def admin_delete_single_plant(name: str):
 
 
 @router.get("/admin/inventory.csv")
-def export_inventory_csv():
-    """Exports structured botanical inventory to CSV."""
-    plants = db.get_plants()
+def export_inventory_csv(
+    tab: str = "ALL",
+    search: Optional[str] = None
+):
+    """Exports complete structured botanical inventory to CSV with 100% of database fields."""
+    if (tab and tab.upper() != "ALL") or (search and search.strip()):
+        page_res = db.get_admin_plants_page(filter_tag=tab, search_q=search or "", page=1, page_size=100000)
+        plants = page_res.get("items", [])
+    else:
+        plants = db.get_plants()
+
     output = io.StringIO()
     writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
 
+    # 100% of botanical database fields included
     writer.writerow([
         "KEY", "ALIAS", "ESPECIE", "ESTADO", "UBICACION", "ALTURA_FECHA_CM",
-        "LINAJE_PADRES", "FECHA_SIEMBRA_ESQUEJE",
+        "LINAJE_PADRES", "FECHA_SIEMBRA_ESQUEJE", "EDAD_CALCULADA",
         "INJERTO", "ULTIMA_PODA", "ULTIMO_TRASPLANTE", "FERTILIZANTE",
-        "FOTOS_TOTAL", "OBSERVACIONES", "INDXW"
+        "FOTOS_TOTAL", "FOTOS_ARCHIVOS", "OBSERVACIONES", "INDXW",
+        "FECHA_REGISTRO", "FECHA_CREACION", "ULTIMA_ACTUALIZACION"
     ])
 
     for p in plants:
-        photos = p.get("photos", [])
+        photos = p.get("photos") or []
+        if isinstance(photos, str):
+            try:
+                photos = json.loads(photos)
+            except Exception:
+                photos = []
+        photos_str = "; ".join(str(x) for x in photos)
+        sow_date = str(p.get("sowing_cutting_date") or "").strip()
+        graft_val = str(p.get("graft") or "").strip()
+        age_str = db.calculate_age_display(sow_date, graft_val) if sow_date else ""
+
+        comentarios_val = str(p.get("comentarios") or "").replace("\r\n", " ").replace("\n", " ").replace("\r", " ").strip()
+        indxw_val = p.get("indxw", 0)
+        try:
+            indxw_num = int(indxw_val)
+        except (ValueError, TypeError):
+            indxw_num = 0
+
         writer.writerow([
-            p.get("name", ""),
-            p.get("aka", ""),
-            p.get("species", ""),
-            p.get("status", "OK"),
-            p.get("location", ""),
-            p.get("height", ""),
-            p.get("padres", ""),
-            p.get("sowing_cutting_date", ""),
-            p.get("graft", ""),
-            p.get("last_pruned", ""),
-            p.get("last_repotted", ""),
-            p.get("fertilizante", ""),
+            str(p.get("name") or ""),
+            str(p.get("aka") or ""),
+            str(p.get("species") or ""),
+            db.normalize_status(p.get("status")),
+            str(p.get("location") or ""),
+            str(p.get("height") or ""),
+            str(p.get("padres") or ""),
+            sow_date,
+            age_str,
+            graft_val,
+            str(p.get("last_pruned") or ""),
+            str(p.get("last_repotted") or ""),
+            str(p.get("fertilizante") or ""),
             len(photos),
-            p.get("comentarios", "").replace("\n", " "),
-            int(p.get("indxw", 0))
+            photos_str,
+            comentarios_val,
+            indxw_num,
+            str(p.get("registration_date") or ""),
+            str(p.get("created_at") or ""),
+            str(p.get("updated_at") or "")
         ])
 
-    csv_data = output.getvalue()
+    # UTF-8 BOM ensures universal Excel / Calc character compatibility
+    csv_data = "\ufeff" + output.getvalue()
     return Response(
-        content=csv_data,
-        media_type="text/csv",
+        content=csv_data.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": 'attachment; filename="inventario_botanico_plantation.csv"',
             "Cache-Control": "no-cache"
@@ -1081,9 +1114,17 @@ def download_single_plant_pdf(name: str):
 
 
 @router.get("/pdf/full-catalog")
-def download_full_catalog_pdf():
-    """Creates complete PDF dossier with index summary and all specimen cards."""
-    plants = db.get_plants()
+def download_full_catalog_pdf(
+    tab: str = "ALL",
+    search: Optional[str] = None
+):
+    """Creates complete PDF dossier with index summary and all specimen cards for all DB records."""
+    if (tab and tab.upper() != "ALL") or (search and search.strip()):
+        page_res = db.get_admin_plants_page(filter_tag=tab, search_q=search or "", page=1, page_size=100000)
+        plants = page_res.get("items", [])
+    else:
+        plants = db.get_plants()
+
     pdf_bytes = generate_catalog_pdf(plants, title="DOSSIER GENERAL DE EJEMPLARES")
     filename = "Plantation_Dossier_General.pdf"
 

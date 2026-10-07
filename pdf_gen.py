@@ -257,18 +257,9 @@ def draw_standardized_image_frame(pdf, img_path: str, x: float, y: float, w: flo
         pdf.cell(w - 4, caption_h, safe_text(safe_cap), border=0, align="C")
 
 
-def generate_single_plant_pdf(plant: dict) -> bytes:
-    """Generate a single-plant technical dossier PDF using fpdf2.
-    Ensures:
-      1. Clave and Alias never overlap regardless of name lengths.
-      2. Specification values are bounded and never overflow into neighboring columns.
-      3. Fertilization and Observations boxes dynamically calculate wrapped text heights.
-      4. Photos are standardized at the bottom or expand gracefully across pages.
-    """
+def draw_plant_dossier_content(pdf: BotanicalPDF, plant: dict) -> None:
+    """Renders the complete botanical technical dossier content for a specimen into the given PDF."""
     raw_name = safe_text(plant.get("name", "N/A"))
-    pdf = BotanicalPDF(title_text=f"EJEMPLAR {raw_name}")
-    pdf.add_page()
-
     name = raw_name
     aka = safe_text(plant.get("aka", ""))
     species = safe_text(plant.get("species", "Sin especie registrada"))
@@ -277,7 +268,7 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
     box_w = pdf.w - 30  # 180mm printable width
 
     # =========================================================================
-    # 1. HEADER CARD (Always on Page 1)
+    # 1. HEADER CARD
     # =========================================================================
     start_y = pdf.get_y()
     pdf.set_fill_color(*CLR_PRIMARY_LIGHT)
@@ -329,7 +320,7 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
     pdf.set_y(start_y + 27)
 
     # =========================================================================
-    # 2. ESPECIFICACIONES (Full-width 2-column grid, always on Page 1)
+    # 2. ESPECIFICACIONES (Full-width 2-column grid)
     # =========================================================================
     pdf.set_font("Helvetica", "B", 9.5)
     pdf.set_text_color(*CLR_PRIMARY)
@@ -523,14 +514,23 @@ def generate_single_plant_pdf(plant: dict) -> bytes:
             caption_txt = f"Foto {idx + 1}/{img_count}: {os.path.basename(img_p)}"
             draw_standardized_image_frame(pdf, img_p, img_x, current_y, img_w, img_h, caption_txt)
 
+
+def generate_single_plant_pdf(plant: dict) -> bytes:
+    """Generate a single-plant technical dossier PDF using fpdf2."""
+    raw_name = safe_text(plant.get("name", "N/A"))
+    pdf = BotanicalPDF(title_text=f"EJEMPLAR {raw_name}")
+    pdf.add_page()
+    draw_plant_dossier_content(pdf, plant)
     return bytes(pdf.output())
 
 
 def generate_catalog_pdf(plants: list, title: str = "DOSSIER GENERAL DE EJEMPLARES") -> bytes:
     """
     Generate a complete catalog / general dossier PDF using fpdf2.
-    Fixes column width allocation and enforces strict boundary clipping to prevent
-    any text or name overlapping between Clave, Alias, and Especie Botánica.
+    Renders ALL elements in the DB:
+      1. Summary statistics ribbon
+      2. Comprehensive Master Index Table with all essential columns
+      3. Complete individual technical dossier sheets with care log, botanical specs, and photos!
     """
     pdf = BotanicalPDF(title_text=title)
     pdf.add_page()
@@ -572,21 +572,25 @@ def generate_catalog_pdf(plants: list, title: str = "DOSSIER GENERAL DE EJEMPLAR
     pdf.set_y(start_y + 18)
 
     # =========================================================================
-    # Index Table Section
-    # Column allocation tuned to prevent any overlapping:
-    # Clave (18mm) | Alias (44mm) | Especie (48mm) | Estado (16mm) | Ubicación (28mm) | Siembra (26mm) = 180mm
+    # Comprehensive Master Index Table
+    # Columns cover all botanical specifications from the DB:
+    # Clave (15) | Alias (28) | Especie (32) | Estado (14) | Ubicación (20) |
+    # Altura (18) | Linaje (25) | Injerto (16) | Fotos (12) = 180mm
     # =========================================================================
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(*CLR_PRIMARY)
-    pdf.cell(0, 6, safe_text("ÍNDICE DE COLECCIÓN & EXPEDIENTE GENERAL"), border=0, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(0, 6, safe_text("ÍNDICE MAESTRO DE COLECCIÓN (TODOS LOS REGISTROS)"), border=0, align="L", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     cols = [
-        ("Clave", 18),
-        ("Alias", 44),
-        ("Especie Botánica", 48),
-        ("Estado", 16),
-        ("Ubicación", 28),
-        ("Siembra / Esqueje", 26)
+        ("Clave", 15),
+        ("Alias", 28),
+        ("Especie Botánica", 32),
+        ("Estado", 14),
+        ("Ubicación", 20),
+        ("Altura", 18),
+        ("Linaje Padres", 25),
+        ("Injerto", 16),
+        ("Fotos", 12),
     ]
 
     def draw_table_header():
@@ -595,26 +599,23 @@ def generate_catalog_pdf(plants: list, title: str = "DOSSIER GENERAL DE EJEMPLAR
         pdf.rect(15, h_y, pdf.w - 30, 6.5, style="F")
 
         pdf.set_xy(15, h_y)
-        pdf.set_font("Helvetica", "B", 7.5)
+        pdf.set_font("Helvetica", "B", 7.0)
         pdf.set_text_color(255, 255, 255)
         for c_title, w in cols:
-            align = "C" if c_title in ["Clave", "Estado"] else "L"
+            align = "C" if c_title in ["Clave", "Estado", "Fotos"] else "L"
             if align == "L":
-                # Add slight visual padding for header label
-                pdf.set_x(pdf.get_x() + 1.5)
-                pdf.cell(w - 1.5, 6.5, safe_text(c_title), border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_x(pdf.get_x() + 1.2)
+                pdf.cell(w - 1.2, 6.5, safe_text(c_title), border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
             else:
                 pdf.cell(w, 6.5, safe_text(c_title), border=0, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
         pdf.ln(6.5)
 
     draw_table_header()
 
-    # Table Rows with strict overflow protection
     row_h = 6.2
     pdf.set_draw_color(*CLR_BORDER)
 
     for i, plant in enumerate(plants):
-        # Prevent row split across pages: ensure clean table header on every page
         if pdf.get_y() + row_h > (pdf.h - 18):
             pdf.add_page()
             draw_table_header()
@@ -629,65 +630,114 @@ def generate_catalog_pdf(plants: list, title: str = "DOSSIER GENERAL DE EJEMPLAR
         p_species = safe_text(plant.get("species", ""))
         p_status = (plant.get("status") or "OK").upper()
         p_loc = safe_text(plant.get("location", ""))
-        p_date = safe_text(plant.get("sowing_cutting_date", ""))
+        p_height = safe_text(plant.get("height", ""))
+        p_padres = safe_text(plant.get("padres", ""))
+        p_graft = safe_text(plant.get("graft", ""))
+        p_photos = plant.get("photos", [])
+        photos_count_str = str(len(p_photos)) if isinstance(p_photos, list) else "0"
 
         cur_x = 15.0
 
-        # 1. Clave (18mm, Centered, Pink Bold)
+        # 1. Clave (15mm)
         pdf.set_xy(cur_x, row_y)
         pdf.set_text_color(*CLR_UNICORN_PINK)
-        clave_fit, c_sz = fit_text_to_width(pdf, p_name, cols[0][1], font_family="Helvetica", font_style="B", initial_size=7.5, min_size=6.0, padding=1.0)
+        c_fit, c_sz = fit_text_to_width(pdf, p_name, cols[0][1], font_family="Helvetica", font_style="B", initial_size=7.5, min_size=5.5, padding=1.0)
         pdf.set_font("Helvetica", "B", c_sz)
-        pdf.cell(cols[0][1], row_h, clave_fit, border=0, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(cols[0][1], row_h, c_fit, border=0, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
         cur_x += cols[0][1]
 
-        # 2. Alias (44mm, Left-Aligned with 1.5mm indent, Peach Bold) - STRICTLY BOUNDED
-        pdf.set_xy(cur_x + 1.5, row_y)
+        # 2. Alias (28mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
         pdf.set_text_color(*CLR_PEACH if p_aka else CLR_MUTED)
         aka_display = p_aka if p_aka else "-"
-        aka_fit, a_sz = fit_text_to_width(pdf, aka_display, cols[1][1] - 2.5, font_family="Helvetica", font_style="B" if p_aka else "", initial_size=7.5, min_size=6.2, padding=1.0)
+        a_fit, a_sz = fit_text_to_width(pdf, aka_display, cols[1][1] - 2.0, font_family="Helvetica", font_style="B" if p_aka else "", initial_size=7.0, min_size=5.5, padding=0.5)
         pdf.set_font("Helvetica", "B" if p_aka else "", a_sz)
-        pdf.cell(cols[1][1] - 1.5, row_h, aka_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(cols[1][1] - 1.0, row_h, a_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
         cur_x += cols[1][1]
 
-        # 3. Especie Botánica (48mm, Left-Aligned with 1.5mm indent, Dark, Italics) - STRICTLY BOUNDED
-        pdf.set_xy(cur_x + 1.5, row_y)
+        # 3. Especie (32mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
         pdf.set_text_color(*CLR_DARK)
-        species_display = p_species if p_species else "Sin registrar"
-        species_fit, sp_sz = fit_text_to_width(pdf, species_display, cols[2][1] - 2.5, font_family="Helvetica", font_style="I", initial_size=7.5, min_size=6.2, padding=1.0)
+        sp_display = p_species if p_species else "-"
+        sp_fit, sp_sz = fit_text_to_width(pdf, sp_display, cols[2][1] - 2.0, font_family="Helvetica", font_style="I", initial_size=7.0, min_size=5.5, padding=0.5)
         pdf.set_font("Helvetica", "I", sp_sz)
-        pdf.cell(cols[2][1] - 1.5, row_h, species_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(cols[2][1] - 1.0, row_h, sp_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
         cur_x += cols[2][1]
 
-        # 4. Estado (16mm, Centered Vector Badge)
-        badge_w = 13.0
-        badge_h = 4.4
+        # 4. Estado (14mm)
+        badge_w = 11.5
+        badge_h = 4.2
         bx = cur_x + ((cols[3][1] - badge_w) / 2)
         by = row_y + ((row_h - badge_h) / 2)
         pdf.draw_status_badge(bx, by, p_status, w=badge_w, h=badge_h)
         cur_x += cols[3][1]
 
-        # 5. Ubicación (28mm, Left-Aligned with 1.5mm indent)
-        pdf.set_xy(cur_x + 1.5, row_y)
+        # 5. Ubicación (20mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
         pdf.set_text_color(*CLR_DARK)
         loc_display = p_loc if p_loc else "-"
-        loc_fit, l_sz = fit_text_to_width(pdf, loc_display, cols[4][1] - 2.5, font_family="Helvetica", font_style="", initial_size=7.5, min_size=6.2, padding=1.0)
+        loc_fit, l_sz = fit_text_to_width(pdf, loc_display, cols[4][1] - 2.0, font_family="Helvetica", font_style="", initial_size=7.0, min_size=5.5, padding=0.5)
         pdf.set_font("Helvetica", "", l_sz)
-        pdf.cell(cols[4][1] - 1.5, row_h, loc_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        pdf.cell(cols[4][1] - 1.0, row_h, loc_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
         cur_x += cols[4][1]
 
-        # 6. Siembra / Esqueje (26mm, Left-Aligned with 1.5mm indent)
-        pdf.set_xy(cur_x + 1.5, row_y)
-        pdf.set_text_color(*CLR_MUTED if not p_date else CLR_DARK)
-        date_display = p_date if p_date else "-"
-        date_fit, d_sz = fit_text_to_width(pdf, date_display, cols[5][1] - 2.0, font_family="Helvetica", font_style="", initial_size=7.5, min_size=6.2, padding=1.0)
-        pdf.set_font("Helvetica", "", d_sz)
-        pdf.cell(cols[5][1] - 1.5, row_h, date_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        # 6. Altura (18mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
+        pdf.set_text_color(*CLR_DARK)
+        h_display = p_height if p_height else "-"
+        h_fit, h_sz = fit_text_to_width(pdf, h_display, cols[5][1] - 2.0, font_family="Helvetica", font_style="", initial_size=6.8, min_size=5.5, padding=0.5)
+        pdf.set_font("Helvetica", "", h_sz)
+        pdf.cell(cols[5][1] - 1.0, row_h, h_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        cur_x += cols[5][1]
 
-        # Subtle row border line
+        # 7. Linaje (25mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
+        pdf.set_text_color(*CLR_DARK)
+        pad_display = p_padres if p_padres else "-"
+        pad_fit, pad_sz = fit_text_to_width(pdf, pad_display, cols[6][1] - 2.0, font_family="Helvetica", font_style="", initial_size=6.8, min_size=5.5, padding=0.5)
+        pdf.set_font("Helvetica", "", pad_sz)
+        pdf.cell(cols[6][1] - 1.0, row_h, pad_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        cur_x += cols[6][1]
+
+        # 8. Injerto (16mm)
+        pdf.set_xy(cur_x + 1.0, row_y)
+        pdf.set_text_color(*CLR_DARK)
+        gr_display = p_graft if p_graft else "-"
+        gr_fit, gr_sz = fit_text_to_width(pdf, gr_display, cols[7][1] - 2.0, font_family="Helvetica", font_style="", initial_size=6.8, min_size=5.5, padding=0.5)
+        pdf.set_font("Helvetica", "", gr_sz)
+        pdf.cell(cols[7][1] - 1.0, row_h, gr_fit, border=0, align="L", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        cur_x += cols[7][1]
+
+        # 9. Fotos (12mm)
+        pdf.set_xy(cur_x, row_y)
+        pdf.set_text_color(*CLR_PRIMARY if photos_count_str != "0" else CLR_MUTED)
+        pdf.set_font("Helvetica", "B" if photos_count_str != "0" else "", 7.2)
+        pdf.cell(cols[8][1], row_h, photos_count_str, border=0, align="C", new_x=XPos.RIGHT, new_y=YPos.TOP)
+
+        # Bottom row line
         pdf.set_draw_color(*CLR_BORDER)
         pdf.set_line_width(0.15)
         pdf.line(15, row_y + row_h, pdf.w - 15, row_y + row_h)
         pdf.set_y(row_y + row_h)
+
+    # =========================================================================
+    # Individual Plant Technical Dossiers
+    # Append the detailed dossier sheet for each specimen
+    # =========================================================================
+    if len(plants) <= 150:
+        for plant in plants:
+            pdf.add_page()
+            draw_plant_dossier_content(pdf, plant)
+    else:
+        # For ultra-large collections (>150), add informational notice page
+        pdf.add_page()
+        pdf.set_y(50)
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(*CLR_PRIMARY)
+        pdf.cell(0, 10, safe_text("ÍNDICE GENERAL COMPLETO REGISTRADO"), border=0, align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*CLR_MUTED)
+        pdf.cell(0, 8, safe_text(f"Se han indexado los {len(plants)} ejemplares de la base de datos con todos sus atributos."), border=0, align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(0, 8, safe_text("Los expedientes con galería de fotos en alta resolución pueden descargarse individualmente desde el catálogo."), border=0, align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     return bytes(pdf.output())

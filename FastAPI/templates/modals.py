@@ -659,12 +659,12 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                 </div>
             </div>
 
-            <div class="modal-footer-sticky">
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div>
                     <a class="btn btn-red"
                        href="/pdf/plant/{plant.get('name')}"
-                       target="_blank"
-                       title="Descargar dossier técnico en PDF">
+                       download="Plantation_Expediente_{plant.get('name')}.pdf"
+                       title="Descargar expediente técnico en PDF">
                         🗎 [DESCARGAR PDF]
                     </a>
                 </div>
@@ -681,7 +681,7 @@ def render_view_plant_modal_content(plant: Dict[str, Any], alert_msg: str = "") 
                             hx-swap="innerHTML"
                             style="font-weight: 600; padding: 7px 18px;"
                             title="Salir del expediente">
-                        ✕ [EXIT]
+                        ✕ [CERRAR]
                     </button>
                 </div>
             </div>
@@ -987,25 +987,14 @@ def render_edit_plant_modal(plant: Dict[str, Any]) -> str:
                     </div>
                 </div>
 
-                <div class="modal-footer-sticky">
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button"
-                                class="btn"
-                                hx-get="/plants/{plant.get('name')}"
-                                hx-target="#modal-container"
-                                hx-swap="innerHTML">
-                            [VOLVER AL EXPEDIENTE]
-                        </button>
-                        <button type="button"
-                                class="btn btn-red"
-                                hx-delete="/plants/{plant.get('name')}"
-                                hx-target="#plant-container"
-                                hx-swap="innerHTML"
-                                hx-confirm="¿Eliminar definitivamente el ejemplar '{html.escape(str(plant.get('name', '')))}' y todas sus fotografías?"
-                                title="Eliminar definitivamente este ejemplar">
-                            🗑 [ELIMINAR]
-                        </button>
-                    </div>
+                <div class="modal-footer-sticky" style="display: flex; justify-content: space-between; align-items: center;">
+                    <button type="button"
+                            class="btn"
+                            hx-get="/plants/{plant.get('name')}"
+                            hx-target="#modal-container"
+                            hx-swap="innerHTML">
+                        [VOLVER AL EXPEDIENTE]
+                    </button>
                     <button type="submit"
                             id="edit-plant-submit-btn"
                             class="btn btn-green"
@@ -2041,7 +2030,7 @@ def render_bulk_create_success_modal(
 
 def render_bulk_delete_modal() -> str:
     """Renders the comprehensive Bulk Specimen Removal and Photo Purge modal."""
-    plants_summary = db.get_plants_summary_for_bulk_delete(limit=3000)
+    plants_summary = db.get_plants_summary_for_bulk_delete(limit=None)
     plants_json = json.dumps(plants_summary)
     distinct_locations = db.get_distinct_locations()
     loc_options = "".join(f'<option value="{html.escape(l)}">{html.escape(l)}</option>' for l in distinct_locations)
@@ -2165,10 +2154,10 @@ def render_bulk_delete_modal() -> str:
                                            class="form-input"
                                            value="10"
                                            min="1"
-                                           max="10000"
+                                           max="50000"
                                            oninput="onBulkDelInputsChanged();" />
                                     <div style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">
-                                        Número final del rango (hasta 10.000)
+                                        Número final del rango (admite 10.000 o más)
                                     </div>
                                 </div>
 

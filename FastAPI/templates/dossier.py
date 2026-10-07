@@ -289,15 +289,15 @@ def render_printable_dossier_html(plant: Dict[str, Any]) -> str:
 
         {photos_html}
 
-        <div class="dossier-actions">
-            <a href="/pdf/plant/{name_esc}" class="btn btn-red" target="_blank">
-                🗎 [DESCARGAR PDF GENERADO]
+        <div class="dossier-actions" style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+            <a href="/pdf/plant/{name_esc}" download="Plantation_Dossier_{name_esc}.pdf" class="btn btn-red" title="Descargar archivo PDF">
+                🗎 [DESCARGAR PDF]
             </a>
-            <button class="btn btn-primary" onclick="window.print()">
-                🖨 [IMPRIMIR DOSSIER]
+            <button type="button" class="btn btn-primary" onclick="window.print()" title="Imprimir expediente">
+                🖨 [IMPRIMIR]
             </button>
-            <button class="btn" onclick="window.close()">
-                ✕ [CERRAR VENTANA]
+            <button type="button" class="btn" onclick="if (window.history.length > 1) {{ window.history.back(); }} else {{ window.location.href = '/'; }}" title="Volver al catálogo">
+                ✕ [VOLVER]
             </button>
         </div>
     </div>

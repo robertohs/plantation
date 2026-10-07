@@ -94,8 +94,7 @@ def render_admin_pagination_bar(
     total_count: int,
     total_pages: int,
     start_idx: int,
-    end_idx: int,
-    position: str = "top"
+    end_idx: int
 ) -> str:
     """Renders compact, responsive pagination controls for the admin inventory table."""
     encoded_search = urllib.parse.quote_plus(search_q)
@@ -113,40 +112,18 @@ def render_admin_pagination_bar(
     has_prev = page > 1
     has_next = page < total_pages
 
-    btn_first = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page=1" hx-target="#admin-table-container" hx-swap="innerHTML" title="Ir a la primera página">[« PRIMERA]</button>""" if has_prev else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">[« PRIMERA]</button>"""
+    btn_first = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page=1" hx-target="#admin-table-container" hx-swap="innerHTML" title="Primera página">«</button>""" if has_prev else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">«</button>"""
 
-    btn_prev = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={page - 1}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Página anterior">[‹ ANTERIOR]</button>""" if has_prev else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">[‹ ANTERIOR]</button>"""
+    btn_prev = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={page - 1}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Página anterior">‹ Anterior</button>""" if has_prev else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">‹ Anterior</button>"""
 
     page_indicator = f"""<span style="font-size: 11px; font-weight: 700; color: var(--peach-orange); padding: 0 4px; white-space: nowrap;">Página {page} de {total_pages}</span>"""
 
-    btn_next = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={page + 1}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Página siguiente">[SIGUIENTE ›]</button>""" if has_next else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">[SIGUIENTE ›]</button>"""
+    btn_next = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={page + 1}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Página siguiente">Siguiente ›</button>""" if has_next else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">Siguiente ›</button>"""
 
-    btn_last = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={total_pages}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Ir a la última página">[ÚLTIMA »]</button>""" if has_next else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">[ÚLTIMA »]</button>"""
-
-    page_sizes = [20, 50, 100, 250]
-    size_options = "".join(
-        f'<option value="{ps}" {"selected" if ps == page_size else ""}>{ps}</option>'
-        for ps in page_sizes
-    )
-
-    page_size_selector = f"""
-    <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); white-space: nowrap;">
-        <span>Filas:</span>
-        <select class="form-input"
-                style="padding: 2px 6px; font-size: 11px; width: auto; background: var(--bg-crust); color: var(--text-main); border: 1px solid var(--border-dim); border-radius: 3px;"
-                hx-get="/admin/filter?tab={filter_tag}&search={encoded_search}&page=1"
-                name="page_size"
-                hx-target="#admin-table-container"
-                hx-swap="innerHTML">
-            {size_options}
-        </select>
-    </div>
-    """
-
-    border_style = "border-bottom: 1px solid var(--border-dim); padding-bottom: 8px; margin-bottom: 10px;" if position == "top" else "border-top: 1px solid var(--border-dim); padding-top: 8px; margin-top: 10px;"
+    btn_last = f"""<button type="button" class="btn btn-sm" hx-get="{base_url}&page={total_pages}" hx-target="#admin-table-container" hx-swap="innerHTML" title="Última página">»</button>""" if has_next else """<button type="button" class="btn btn-sm" disabled style="opacity: 0.35; cursor: not-allowed;">»</button>"""
 
     return f"""
-    <div class="admin-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11px; {border_style}">
+    <div class="admin-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11px; border-top: 1px solid var(--border-dim); padding-top: 10px; margin-top: 10px;">
         <div style="color: var(--text-dim); white-space: nowrap;">
             {showing_text}
         </div>
@@ -157,7 +134,7 @@ def render_admin_pagination_bar(
             {btn_next}
             {btn_last}
             <span style="color: var(--border-dim); margin: 0 2px;">|</span>
-            {page_size_selector}
+            <span style="font-size: 11px; color: var(--text-dim); white-space: nowrap;">(20 por pág.)</span>
         </div>
     </div>
     """
@@ -273,18 +250,6 @@ def render_admin_table_content(
         for tag, label in tab_defs
     )
 
-    pagination_top = render_admin_pagination_bar(
-        filter_tag=filter_tag,
-        search_q=search_q,
-        page=current_page,
-        page_size=page_size,
-        total_count=total_count,
-        total_pages=total_pages,
-        start_idx=start_idx,
-        end_idx=end_idx,
-        position="top"
-    )
-
     pagination_bottom = render_admin_pagination_bar(
         filter_tag=filter_tag,
         search_q=search_q,
@@ -293,13 +258,12 @@ def render_admin_table_content(
         total_count=total_count,
         total_pages=total_pages,
         start_idx=start_idx,
-        end_idx=end_idx,
-        position="bottom"
+        end_idx=end_idx
     )
 
     return f"""
     <div id="admin-table-and-tabs">
-        <div class="inventory-toolbar" style="margin-top: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div class="inventory-toolbar" style="margin-top: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div class="inventory-filter-tabs" id="admin-filter-tabs" style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                 <span style="font-size: 11px; font-weight: 700; color: var(--text-dim); margin-right: 4px;">FILTRO:</span>
                 {tabs_html}
@@ -314,9 +278,10 @@ def render_admin_table_content(
                            value="{html.escape(search_q)}"
                            placeholder="Clave, especie, alias..."
                            hx-get="/admin/filter?tab={filter_tag}&page=1&page_size={page_size}"
-                           hx-trigger="input changed delay:500ms, keydown[key=='Enter']"
+                           hx-trigger="input changed delay:350ms, keydown[key=='Enter']"
                            hx-target="#admin-table-container"
                            hx-swap="innerHTML"
+                           hx-include="this"
                            onfocus="window._adminSearchHadFocus=true;"
                            onblur="window._adminSearchHadFocus=false;"
                            style="background: var(--bg-crust); border: 1px solid var(--border-dim); color: var(--text-main); font-size: 12px; padding: 4px 8px; border-radius: 3px; outline: none; width: 170px;" />
@@ -331,12 +296,12 @@ def render_admin_table_content(
             </div>
         </div>
 
-        {pagination_top}
-
         <form id="admin-bulk-form"
               hx-post="/admin/bulk-delete"
               hx-target="#admin-table-container"
-              hx-swap="innerHTML">
+              hx-swap="innerHTML"
+              onkeydown="if (event.key === 'Enter') {{ event.preventDefault(); return false; }}"
+              onsubmit="if (document.querySelectorAll('#admin-table-rows .admin-checkbox:checked').length === 0) {{ event.preventDefault(); return false; }}">
             <input type="hidden" name="tab" value="{filter_tag}" />
             <input type="hidden" name="search" value="{html.escape(search_q)}" />
             <input type="hidden" name="page" value="{current_page}" />
@@ -359,9 +324,11 @@ def render_admin_table_content(
                     </span>
                 </div>
                 <button type="submit"
+                        id="admin-bulk-delete-btn"
                         class="btn btn-sm btn-red"
-                        style="font-weight: bold;"
-                        hx-confirm="¿CONFIRMAR ELIMINACIÓN MASIVA de los ejemplares seleccionados y el borrado permanente de sus fotografías?">
+                        style="font-weight: bold; opacity: 0.45; cursor: not-allowed;"
+                        disabled
+                        onclick="return confirmAdminBulkDelete();">
                     🗑 [ELIMINAR SELECCIÓN]
                 </button>
             </div>
@@ -466,7 +433,7 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
                                 hx-swap="innerHTML"
                                 style="font-weight: 700;"
                                 title="Añadir múltiples ejemplares simultáneamente con datos comunes y claves continuas">
-                            ➕ [ALTA MASIVA DE PLANTAS]
+                            ➕ [ALTA MASIVA]
                         </button>
                         <button type="button"
                                 class="btn btn-sm btn-red"
@@ -475,11 +442,11 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
                                 hx-swap="innerHTML"
                                 style="font-weight: 700;"
                                 title="Eliminar múltiples ejemplares simultáneamente por rango, lista manual o criterios">
-                            🗑 [BAJA MASIVA DE PLANTAS]
+                            🗑 [BAJA MASIVA]
                         </button>
                         <a class="btn btn-sm btn-primary"
                            href="/pdf/full-catalog"
-                           target="_blank"
+                           download="Plantation_Dossier_General.pdf"
                            title="Generar y descargar dossier de inventario completo en PDF">
                             🗎 [DOSSIER PDF]
                         </a>
@@ -502,11 +469,11 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
             <!-- MODAL FOOTER -->
             <div class="modal-footer-sticky" style="display: flex; justify-content: flex-end; align-items: center;">
                 <button type="button"
-                        class="btn btn-red"
+                        class="btn"
                         hx-get="/modal/close"
                         hx-target="#modal-container"
                         hx-swap="innerHTML">
-                    CERRAR [ESC]
+                    ✕ CERRAR [ESC]
                 </button>
             </div>
 
@@ -515,6 +482,14 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
 
     <!-- Client-side helpers for admin table checkbox selection -->
     <script>
+        function confirmAdminBulkDelete() {{
+            var checked = document.querySelectorAll('#admin-table-rows .admin-checkbox:checked');
+            if (checked.length === 0) {{
+                return false;
+            }}
+            return confirm('¿CONFIRMAR ELIMINACIÓN MASIVA de los ' + checked.length + ' ejemplares seleccionados y purgar permanentemente sus fotografías?');
+        }}
+
         function updateAdminSelectionCount() {{
             var rows = document.querySelectorAll('#admin-table-rows tr');
             var visible = 0;
@@ -534,6 +509,21 @@ def render_admin_modal(filter_tag: str = "ALL") -> str:
                     counter.innerHTML = baseText + ' · <strong style="color: var(--peach-orange);">' + checkedCount + ' seleccionado(s)</strong>';
                 }} else {{
                     counter.textContent = baseText;
+                }}
+            }}
+
+            var delBtn = document.getElementById('admin-bulk-delete-btn');
+            if (delBtn) {{
+                if (checkedCount > 0) {{
+                    delBtn.disabled = false;
+                    delBtn.style.opacity = '1';
+                    delBtn.style.cursor = 'pointer';
+                    delBtn.innerHTML = '🗑 [ELIMINAR SELECCIÓN (' + checkedCount + ')]';
+                }} else {{
+                    delBtn.disabled = true;
+                    delBtn.style.opacity = '0.45';
+                    delBtn.style.cursor = 'not-allowed';
+                    delBtn.innerHTML = '🗑 [ELIMINAR SELECCIÓN]';
                 }}
             }}
         }}

@@ -790,16 +790,20 @@ def get_parent_suggestions(exclude_name: str = "", limit: int = 100) -> List[Dic
         return [{"name": r["name"], "species": r["species"], "aka": r["aka"] or ""} for r in cursor.fetchall()]
 
 
-def get_plants_summary_for_bulk_delete(limit: int = 2000) -> List[Dict[str, Any]]:
+def get_plants_summary_for_bulk_delete(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     """Returns lightweight summary dictionaries for bulk deletion filtering."""
     with get_connection() as conn:
-        cursor = conn.execute("""
+        sql = """
             SELECT name, species, aka, status, location,
                    COALESCE(json_array_length(photos), 0) as photos_count
             FROM plants
             ORDER BY LENGTH(name) ASC, name ASC
-            LIMIT ?
-        """, (limit,))
+        """
+        params: List[Any] = []
+        if limit is not None and limit > 0:
+            sql += " LIMIT ?"
+            params.append(int(limit))
+        cursor = conn.execute(sql, params)
         return [
             {
                 "name": r["name"],
